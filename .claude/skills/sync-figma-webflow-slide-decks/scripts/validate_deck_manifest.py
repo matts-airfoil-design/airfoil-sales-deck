@@ -1,176 +1,202 @@
 #!/usr/bin/env python3
-"""Validate a deck manifest against the deck contract.
+"""Validate and derive navigation from a portable slide-deck manifest."""
 
-Checks required identifiers, group kinds and ordering, unique keys,
-navigation fields, and every `#/N/1` destination. With --emit-navigation,
-prints the ordered cover/dropdown data derived from the manifest.
-
-Validation is a consistency check only; it does not prove that external
-Figma or Webflow state still matches. Re-read Webflow after validation
-and before writing.
-
-Usage:
-    python3 validate_deck_manifest.py path/to/deck-manifest.json
-    python3 validate_deck_manifest.py path/to/deck-manifest.json --emit-navigation
-"""
+from __future__ import annotations
 
 import argparse
 import json
 import sys
+from pathlib import Path
+from typing import Any
+
 
 VALID_KINDS = {"cover", "content", "end"}
 
-REQUIRED_FIGMA_FIELDS = ["file_key", "container_node_id"]
-REQUIRED_WEBFLOW_FIELDS = ["site_id", "page_id", "deck_component_id"]
+
+def _nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
-def _nonempty_str(value):
-    return isinstance(value, str) and value.strip() != ""
+def validate_manifest(data: Any) -> tuple[list[str], list[dict[str, Any]]]:
+    errors: list[str] = []
+    navigation: list[dict[str, Any]] = []
 
+    if not isinstance(data, dict):
+        return ["manifest must be a JSON object"], navigation
 
-def validate(manifest):
-    errors = []
-    warnings = []
-
-    figma = manifest.get("figma")
+    figma = data.get("figma")
     if not isinstance(figma, dict):
-        errors.append("missing or invalid 'figma' object")
-    else:
-        for field in REQUIRED_FIGMA_FIELDS:
-            if not _nonempty_str(figma.get(field)):
-                errors.append(f"figma.{field} is required and must be a non-empty string")
+        errors.append("figma must be an object")
+    elif not _nonempty_string(figma.get("file_key")):
+        errors.append("figma.file_key must be a non-empty string")
 
-    webflow = manifest.get("webflow")
+    webflow = data.get("webflow")
     if not isinstance(webflow, dict):
-        errors.append("missing or invalid 'webflow' object")
+        errors.append("webflow must be an object")
     else:
-        for field in REQUIRED_WEBFLOW_FIELDS:
-            if not _nonempty_str(webflow.get(field)):
-                errors.append(f"webflow.{field} is required and must be a non-empty string")
+        for field in ("site_id", "page_id", "deck_component_id"):
+            if not _nonempty_string(webflow.get(field)):
+                errors.append(f"webflow.{field} must be a non-empty string")
 
-    groups = manifest.get("groups")
+    groups = data.get("groups")
     if not isinstance(groups, list) or not groups:
-        errors.append("'groups' must be a non-empty list")
-        return errors, warnings
+        errors.append("groups must be a non-empty array")
+        return errors, navigation
 
-    seen_keys = set()
+    seen_keys: set[str] = set()
+    end_positions: list[int] = []
+
     for position, group in enumerate(groups, start=1):
-        label = f"groups[{position - 1}]"
+        prefix = f"groups[{position - 1}]"
         if not isinstance(group, dict):
-            errors.append(f"{label} must be an object")
+            errors.append(f"{prefix} must be an object")
             continue
 
         key = group.get("key")
-        if not _nonempty_str(key):
-            errors.append(f"{label}: 'key' is required and must be a non-empty string")
+        if not _nonempty_string(key):
+            errors.append(f"{prefix}.key must be a non-empty string")
         elif key in seen_keys:
-            errors.append(f"{label}: duplicate group key '{key}'")
+            errors.append(f"{prefix}.key duplicates {key!r}")
         else:
             seen_keys.add(key)
-        name = key if _nonempty_str(key) else label
 
         kind = group.get("kind")
         if kind not in VALID_KINDS:
-            errors.append(f"{name}: 'kind' must be one of {sorted(VALID_KINDS)}, got {kind!r}")
+            errors.append(
+                f"{prefix}.kind must be one of {sorted(VALID_KINDS)}"
+            )
             continue
-
-        if kind == "cover" and position != 1:
-            errors.append(f"{name}: cover group must be first, found at position {position}")
-        if kind == "end" and position != len(groups):
-            errors.append(f"{name}: end group must be last, found at position {position}")
 
         include = group.get("include_in_navigation")
         if not isinstance(include, bool):
-            errors.append(f"{name}: 'include_in_navigation' is required and must be a boolean")
+            errors.append(f"{prefix}.include_in_navigation must be boolean")
             include = False
 
-        if kind in ("cover", "end") and include:
-            errors.append(f"{name}: {kind} groups must stay out of navigation")
+        if kind == "cover":
+            if position != 1:
+                errors.append(f"{prefix}: cover must be the first group")
+            if include:
+                errors.append(f"{prefix}: cover cannot be in navigation")
+
+        if kind == "end":
+            end_positions.append(position)
+            if include:
+                errors.append(f"{prefix}: end group cannot be in navigation")
 
         if include:
+            expected_href = f"#/{position}/1"
             for field in ("label", "description", "href"):
-                if not _nonempty_str(group.get(field)):
-                    errors.append(f"{name}: navigable group requires non-empty '{field}'")
-            href = group.get("href")
-            expected = f"#/{position}/1"
-            if _nonempty_str(href) and href != expected:
+                if not _nonempty_string(group.get(field)):
+                    errors.append(f"{prefix}.{field} must be a non-empty string")
+            if _nonempty_string(group.get("href")) and group["href"] != expected_href:
                 errors.append(
-                    f"{name}: href {href!r} does not match actual position "
-                    f"{position} (expected {expected!r})"
+                    f"{prefix}.href is {group['href']!r}; expected {expected_href!r}"
                 )
-
-        if kind == "content":
-            node_ids = group.get("figma_node_ids")
-            if not isinstance(node_ids, list) or not node_ids:
-                warnings.append(f"{name}: content group has no 'figma_node_ids'")
-            hashes = group.get("render_hashes")
-            if isinstance(node_ids, list) and isinstance(hashes, list) and len(hashes) != len(node_ids):
-                warnings.append(
-                    f"{name}: 'render_hashes' count ({len(hashes)}) does not match "
-                    f"'figma_node_ids' count ({len(node_ids)})"
-                )
-
-    kinds = [g.get("kind") for g in groups if isinstance(g, dict)]
-    if kinds.count("cover") > 1:
-        errors.append("more than one cover group")
-    if kinds.count("end") > 1:
-        errors.append("more than one end group")
-    if "content" not in kinds:
-        warnings.append("manifest contains no content groups")
-
-    return errors, warnings
-
-
-def emit_navigation(manifest):
-    entries = []
-    for position, group in enumerate(manifest.get("groups", []), start=1):
-        if isinstance(group, dict) and group.get("include_in_navigation"):
-            entries.append(
+            navigation.append(
                 {
-                    "position": position,
-                    "key": group.get("key"),
+                    "key": key,
+                    "group_index": position,
                     "label": group.get("label"),
-                    "href": f"#/{position}/1",
                     "description": group.get("description"),
+                    "href": expected_href,
                 }
             )
-    print(json.dumps({"cover_links": entries, "dropdown_links": entries}, indent=2))
+
+    if groups and isinstance(groups[0], dict) and groups[0].get("kind") != "cover":
+        errors.append("groups[0].kind must be 'cover'")
+
+    if len(end_positions) > 1:
+        errors.append("only one end group is allowed")
+    elif end_positions and end_positions[0] != len(groups):
+        errors.append("end group must be the last group")
+
+    return errors, navigation
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("manifest", help="path to deck-manifest.json")
+def _self_test() -> int:
+    valid = {
+        "figma": {"file_key": "file-key"},
+        "webflow": {
+            "site_id": "site-id",
+            "page_id": "page-id",
+            "deck_component_id": "component-id",
+        },
+        "groups": [
+            {"key": "cover", "kind": "cover", "include_in_navigation": False},
+            {
+                "key": "project-a",
+                "kind": "content",
+                "label": "Project A",
+                "description": "A factual description",
+                "include_in_navigation": True,
+                "href": "#/2/1",
+            },
+            {"key": "end", "kind": "end", "include_in_navigation": False},
+        ],
+    }
+    errors, navigation = validate_manifest(valid)
+    assert not errors, errors
+    assert navigation == [
+        {
+            "key": "project-a",
+            "group_index": 2,
+            "label": "Project A",
+            "description": "A factual description",
+            "href": "#/2/1",
+        }
+    ]
+
+    invalid = json.loads(json.dumps(valid))
+    invalid["groups"][1]["href"] = "#/3/1"
+    errors, _ = validate_manifest(invalid)
+    assert any("expected '#/2/1'" in error for error in errors), errors
+    print("self-test passed")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate a Figma-to-Webflow slide-deck manifest."
+    )
+    parser.add_argument("manifest", nargs="?", help="Path to a JSON manifest")
     parser.add_argument(
         "--emit-navigation",
         action="store_true",
-        help="print ordered cover/dropdown navigation derived from the manifest",
+        help="Print derived navigation JSON after validation",
     )
+    parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
+    if args.self_test:
+        return _self_test()
+    if not args.manifest:
+        parser.error("manifest is required unless --self-test is used")
+
+    path = Path(args.manifest)
     try:
-        with open(args.manifest, encoding="utf-8") as handle:
-            manifest = json.load(handle)
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"error: cannot read manifest: {exc}", file=sys.stderr)
-        return 1
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"error: manifest not found: {path}", file=sys.stderr)
+        return 2
+    except json.JSONDecodeError as exc:
+        print(f"error: invalid JSON in {path}: {exc}", file=sys.stderr)
+        return 2
 
-    errors, warnings = validate(manifest)
-
-    for warning in warnings:
-        print(f"warning: {warning}", file=sys.stderr)
-    for error in errors:
-        print(f"error: {error}", file=sys.stderr)
-
+    errors, navigation = validate_manifest(data)
     if errors:
-        print(f"FAIL: {len(errors)} error(s), {len(warnings)} warning(s)", file=sys.stderr)
+        for error in errors:
+            print(f"error: {error}", file=sys.stderr)
         return 1
 
     if args.emit_navigation:
-        emit_navigation(manifest)
-
-    print(f"OK: {len(manifest.get('groups', []))} group(s), {len(warnings)} warning(s)", file=sys.stderr)
+        print(json.dumps(navigation, indent=2, ensure_ascii=False))
+    else:
+        print(
+            f"manifest valid: {len(data['groups'])} groups, "
+            f"{len(navigation)} navigation entries"
+        )
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
