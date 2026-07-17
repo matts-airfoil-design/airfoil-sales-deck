@@ -24,8 +24,8 @@ Both are available as claude.ai connectors or MCP servers configured for Claude 
 │   └── mcp-reliability.md           # auth, retries, publishing, rate-limit handling
 └── scripts/
     └── validate_deck_manifest.py    # manifest consistency validator
-manifests/
-└── deck-manifest.example.json       # template for a per-deck manifest
+docs/
+└── site-architecture.md             # mapped site structure (pages, components, assets, Figma source)
 ```
 
 ## Usage
@@ -38,7 +38,7 @@ The skill handles change detection, 2x export, WebP optimization, deck-tree edit
 
 ## Manifests
 
-Recurring decks keep a manifest in `manifests/` (copy the example to e.g. `manifests/deck-manifest.json`). Validate with:
+Recurring decks keep a manifest in `manifests/` — the shape is documented in the skill's [`references/manifest.md`](.claude/skills/sync-figma-webflow-slide-decks/references/manifest.md). None is committed yet; build one from live state on the next full-deck pass. Validate with:
 
 ```bash
 python3 .claude/skills/sync-figma-webflow-slide-decks/scripts/validate_deck_manifest.py manifests/deck-manifest.json
