@@ -1,0 +1,36 @@
+{
+  "figma": {
+    "file_key": "<current-file-key>",
+    "container_node_id": "<page-or-strip-node-id>",
+    "version": "<optional-file-version>"
+  },
+  "webflow": {
+    "site_id": "<current-site-id>",
+    "page_id": "<internal-slide-page-id>",
+    "deck_component_id": "<current-deck-component-id>"
+  },
+  "groups": [
+    {
+      "key": "cover",
+      "kind": "cover",
+      "include_in_navigation": false
+    },
+    {
+      "key": "project-a",
+      "kind": "content",
+      "label": "Project A",
+      "description": "Short factual product description",
+      "include_in_navigation": true,
+      "href": "#/2/1",
+      "figma_node_ids": ["<frame-node-id>"],
+      "render_hashes": ["<export-hash>"],
+      "webflow_element_id": "<group-instance-or-section-id>",
+      "webflow_asset_ids": ["<asset-id>"]
+    },
+    {
+      "key": "end",
+      "kind": "end",
+      "include_in_navigation": false
+    }
+  ]
+}
