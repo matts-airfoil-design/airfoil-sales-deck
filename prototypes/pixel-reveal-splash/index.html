@@ -52,37 +52,6 @@
     display: block;
   }
 
-  /* ---------- Splash content ---------- */
-
-  #splash-content {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    text-align: center;
-    pointer-events: none;
-    z-index: 2;
-    mix-blend-mode: difference;
-    color: #fff;
-  }
-
-  #splash-content h1 {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: clamp(2.6rem, 8vw, 7rem);
-    letter-spacing: -0.03em;
-    line-height: 0.95;
-    text-transform: uppercase;
-  }
-
-  #splash-content p {
-    margin-top: 1.2rem;
-    font-size: clamp(0.7rem, 1.4vw, 0.85rem);
-    letter-spacing: 0.35em;
-    text-transform: uppercase;
-    opacity: 0.75;
-  }
-
   /* ---------- Control panel ---------- */
 
   #panel {
@@ -335,12 +304,6 @@
 <div id="stage">
   <img id="bg-image" alt="Splash background">
   <canvas id="overlay-canvas"></canvas>
-  <div id="splash-content">
-    <div>
-      <h1>Airfoil</h1>
-      <p>Move to reveal</p>
-    </div>
-  </div>
 </div>
 
 <button id="panel-toggle" title="Show controls">✦</button>
@@ -388,6 +351,19 @@
     </div>
 
     <div class="divider"></div>
+    <div class="section-label">Scatter</div>
+
+    <div class="control">
+      <label>Radius <output id="scatter-radius-out">160 px</output></label>
+      <input type="range" id="scatter-radius" min="0" max="400" value="160" step="10">
+    </div>
+
+    <div class="control">
+      <label>Density <output id="scatter-count-out">8 / move</output></label>
+      <input type="range" id="scatter-count" min="0" max="24" value="8">
+    </div>
+
+    <div class="divider"></div>
     <div class="section-label">Trail</div>
 
     <div class="control">
@@ -426,6 +402,8 @@
   const cfg = {
     cellSize: 48,        // px per grid cell
     brushRadius: 1,      // extra cells revealed around the cursor cell
+    scatterRadius: 160,  // px radius around the cursor for random scattered cells
+    scatterCount: 8,     // scattered cells spawned per pointer move
     lingerMs: 600,       // fully-revealed hold time before fading back
     fadeMs: 1200,        // fade-back duration
     trailMode: 'fade',   // 'fade' | 'stay'
@@ -470,6 +448,19 @@
         if (r >= 2 && (dx * dx + dy * dy) > r * r + 1) continue;
         revealCell(cx + dx, cy + dy, now);
       }
+    }
+  }
+
+  // Random cells sprinkled around the cursor, denser toward the centre
+  function scatterAt(x, y, now) {
+    const R = cfg.scatterRadius;
+    if (R <= 0 || cfg.scatterCount <= 0) return;
+    for (let i = 0; i < cfg.scatterCount; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.random() * Math.random() * R; // centre-biased falloff
+      const cx = Math.floor((x + Math.cos(a) * d) / cfg.cellSize);
+      const cy = Math.floor((y + Math.sin(a) * d) / cfg.cellSize);
+      revealCell(cx, cy, now);
     }
   }
 
@@ -522,6 +513,7 @@
     allRevealed = false;
     if (lastPointer) revealStroke(lastPointer, p, now);
     else revealAt(p.x, p.y, now);
+    scatterAt(p.x, p.y, now);
     lastPointer = p;
   });
 
@@ -529,7 +521,10 @@
   stage.addEventListener('pointerdown', (e) => {
     const rect = stage.getBoundingClientRect();
     allRevealed = false;
-    revealAt(e.clientX - rect.left, e.clientY - rect.top, performance.now());
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const now = performance.now();
+    revealAt(x, y, now);
+    scatterAt(x, y, now);
   });
 
   // ---------- Default background (procedural watercolor placeholder) ----------
@@ -539,31 +534,57 @@
     c.width = w; c.height = h;
     const g = c.getContext('2d');
 
-    g.fillStyle = '#4a90d9';
-    g.fillRect(0, 0, w, h);
-
-    const blobs = [
-      { x: 0.42, y: 0.30, r: 0.55, color: 'rgba(20, 40, 170, 0.85)' },
-      { x: 0.55, y: 0.50, r: 0.30, color: 'rgba(90, 190, 215, 0.9)' },
-      { x: 0.78, y: 0.55, r: 0.38, color: 'rgba(255, 150, 190, 0.85)' },
-      { x: 0.62, y: 0.78, r: 0.30, color: 'rgba(255, 120, 170, 0.8)' },
-      { x: 0.35, y: 0.42, r: 0.16, color: 'rgba(140, 60, 200, 0.6)' },
-      { x: 0.15, y: 0.75, r: 0.40, color: 'rgba(40, 90, 200, 0.5)' },
-      { x: 0.85, y: 0.15, r: 0.30, color: 'rgba(120, 180, 230, 0.6)' },
-    ];
-    for (const b of blobs) {
-      const grad = g.createRadialGradient(b.x * w, b.y * h, 0, b.x * w, b.y * h, b.r * w);
-      grad.addColorStop(0, b.color);
+    // Recreation of the reference watercolor: a dark indigo ring on a mid-blue
+    // wash, teal pooling in the centre, a violet patch on the inner left edge,
+    // and a warm pink bloom breaking through the ring's right side.
+    const blob = (x, y, r, color) => {
+      const grad = g.createRadialGradient(x * w, y * h, 0, x * w, y * h, r * w);
+      grad.addColorStop(0, color);
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = grad;
       g.fillRect(0, 0, w, h);
+    };
+
+    // Mid-blue wash base with lighter breathing at the corners
+    g.fillStyle = '#4b8cd2';
+    g.fillRect(0, 0, w, h);
+    blob(0.06, 0.08, 0.30, 'rgba(150, 200, 240, 0.45)');
+    blob(0.95, 0.90, 0.30, 'rgba(140, 195, 235, 0.35)');
+    blob(0.10, 0.90, 0.35, 'rgba(60, 110, 200, 0.4)');
+
+    // Dark indigo ring: overlapping blooms placed along an irregular circle
+    const RCX = 0.52, RCY = 0.44, RING = 0.335, ringPts = 26;
+    for (let i = 0; i < ringPts; i++) {
+      const a = (i / ringPts) * Math.PI * 2;
+      const wobble = 1 + 0.10 * Math.sin(a * 3 + 1.2) + 0.05 * Math.sin(a * 7);
+      const bx = RCX + Math.cos(a) * RING * wobble * (h / w);
+      const by = RCY + Math.sin(a) * RING * wobble;
+      // The ring thins and warms where the pink bloom breaks through (right side)
+      const pinkSide = Math.cos(a) > 0.45 && Math.sin(a) > -0.35;
+      blob(bx, by, pinkSide ? 0.075 : 0.115,
+           pinkSide ? 'rgba(60, 70, 190, 0.35)' : 'rgba(18, 34, 165, 0.60)');
     }
 
-    // Paper-grain noise
+    // Teal pooling inside the ring
+    blob(RCX + 0.02, RCY + 0.06, 0.20, 'rgba(70, 185, 215, 0.85)');
+    blob(RCX - 0.04, RCY - 0.04, 0.13, 'rgba(60, 150, 205, 0.6)');
+
+    // Violet patch on the inner left edge of the ring
+    blob(0.36, 0.38, 0.09, 'rgba(150, 60, 210, 0.75)');
+    blob(0.39, 0.30, 0.08, 'rgba(200, 110, 220, 0.5)');
+
+    // Pink bloom: pushes through the ring's right side and pools below
+    blob(0.85, 0.38, 0.22, 'rgba(255, 165, 200, 0.9)');
+    blob(0.78, 0.62, 0.20, 'rgba(255, 140, 185, 0.9)');
+    blob(0.62, 0.80, 0.18, 'rgba(255, 155, 195, 0.85)');
+    blob(0.70, 0.72, 0.10, 'rgba(250, 90, 130, 0.5)');
+    blob(0.44, 0.34, 0.10, 'rgba(240, 140, 215, 0.55)');
+
+    // Watercolor paper grain
     const noise = g.getImageData(0, 0, w, h);
     const d = noise.data;
     for (let i = 0; i < d.length; i += 4) {
-      const n = (Math.random() - 0.5) * 26;
+      const n = (Math.random() - 0.5) * 34;
       d[i] += n; d[i + 1] += n; d[i + 2] += n;
     }
     g.putImageData(noise, 0, 0);
@@ -593,6 +614,8 @@
   bindRange('cell-size', 'cell-out', v => v + ' px', v => { cfg.cellSize = v; rebuildGrid(); });
   bindRange('brush-size', 'brush-out', v => v === 0 ? '1 cell' : (2 * v + 1) + '×' + (2 * v + 1), v => { cfg.brushRadius = v; });
   bindRange('overlay-opacity', 'opacity-out', v => v + '%', v => { cfg.overlayOpacity = v / 100; });
+  bindRange('scatter-radius', 'scatter-radius-out', v => v === 0 ? 'Off' : v + ' px', v => { cfg.scatterRadius = v; });
+  bindRange('scatter-count', 'scatter-count-out', v => v === 0 ? 'Off' : v + ' / move', v => { cfg.scatterCount = v; });
   bindRange('linger', 'linger-out', v => (v / 1000).toFixed(1) + ' s', v => { cfg.lingerMs = v; });
   bindRange('fade', 'fade-out', v => (v / 1000).toFixed(1) + ' s', v => { cfg.fadeMs = v; });
 
