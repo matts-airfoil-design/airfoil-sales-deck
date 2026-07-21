@@ -10,7 +10,8 @@ Open `index.html` in any browser — no build step or server needed.
 
 - **Background** — drop or browse for your own image (e.g. V01.png). A procedural
   recreation of the V01 watercolor (indigo ring, teal centre, pink bloom) loads
-  by default.
+  by default. Alternatively pick a solid background color; "Use image" switches
+  back to the image.
 - **Overlay** — color and opacity of the covering layer (e.g. V02's light gray).
 - **Grid** — cell size in pixels, brush radius (how many cells the cursor
   reveals at once), and cell outline thickness and color (0 = no outlines).

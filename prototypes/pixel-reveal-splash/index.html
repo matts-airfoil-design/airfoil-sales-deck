@@ -322,6 +322,15 @@
       <input type="file" id="file-input" accept="image/*" hidden>
     </div>
 
+    <div class="control">
+      <label>Or solid color</label>
+      <div class="color-control">
+        <input type="color" id="bg-color" value="#4b8cd2">
+        <span class="hex" id="bg-hex">#4B8CD2</span>
+        <button class="btn" id="bg-use-image" style="width:auto;padding:6px 10px;margin-left:auto;display:none">Use image</button>
+      </div>
+    </div>
+
     <div class="section-label">Overlay</div>
 
     <div class="control">
@@ -724,15 +733,38 @@
     toggle.classList.remove('visible');
   });
 
-  // ---------- Image upload ----------
+  // ---------- Background source: image or solid color ----------
   const dropZone = $('drop-zone');
   const fileInput = $('file-input');
+  const bgUseImageBtn = $('bg-use-image');
+
+  // Picking a color swaps the background to a flat fill; loading an image
+  // (or the "Use image" button) swaps back.
+  function useBackgroundColor(color) {
+    bgImage.style.display = 'none';
+    stage.style.background = color;
+    bgUseImageBtn.style.display = '';
+  }
+
+  function useBackgroundImage() {
+    bgImage.style.display = '';
+    stage.style.background = '';
+    bgUseImageBtn.style.display = 'none';
+  }
+
+  $('bg-color').addEventListener('input', (e) => {
+    $('bg-hex').textContent = e.target.value.toUpperCase();
+    useBackgroundColor(e.target.value);
+  });
+
+  bgUseImageBtn.addEventListener('click', useBackgroundImage);
 
   function loadImageFile(file) {
     if (!file || !file.type.startsWith('image/')) return;
     const url = URL.createObjectURL(file);
     bgImage.onload = () => URL.revokeObjectURL(url);
     bgImage.src = url;
+    useBackgroundImage();
   }
 
   dropZone.addEventListener('click', () => fileInput.click());
