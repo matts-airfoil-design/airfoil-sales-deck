@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Reveal — Splash Screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --panel-bg: rgba(12, 13, 16, 0.82);
+    --panel-border: rgba(255, 255, 255, 0.09);
+    --panel-text: #e9e9ec;
+    --panel-dim: #8b8d94;
+    --accent: #ff5b8d;
+    --accent-2: #4f7dff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: #0c0d10;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* ---------- Stage ---------- */
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    cursor: crosshair;
+  }
+
+  #bg-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  #overlay-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ---------- Splash content ---------- */
+
+  #splash-content {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    pointer-events: none;
+    z-index: 2;
+    mix-blend-mode: difference;
+    color: #fff;
+  }
+
+  #splash-content h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2.6rem, 8vw, 7rem);
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+    text-transform: uppercase;
+  }
+
+  #splash-content p {
+    margin-top: 1.2rem;
+    font-size: clamp(0.7rem, 1.4vw, 0.85rem);
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    opacity: 0.75;
+  }
+
+  /* ---------- Control panel ---------- */
+
+  #panel {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 280px;
+    z-index: 10;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    color: var(--panel-text);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+  }
+
+  #panel.hidden {
+    transform: translateX(calc(100% + 24px));
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #panel header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  #panel header .title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.82rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  #panel header .title span { color: var(--accent); }
+
+  #panel-body {
+    padding: 14px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+
+  .control label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--panel-dim);
+    margin-bottom: 7px;
+  }
+
+  .control label output {
+    color: var(--panel-text);
+    font-weight: 600;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent) var(--fill, 50%), rgba(255,255,255,0.14) var(--fill, 50%));
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    transition: transform 0.15s ease;
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  .row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .row .control { flex: 1; }
+
+  /* Color input */
+  .color-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  input[type="color"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 44px;
+    height: 32px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 3px; }
+  input[type="color"]::-webkit-color-swatch { border: none; border-radius: 5px; }
+  input[type="color"]::-moz-color-swatch { border: none; border-radius: 5px; }
+
+  .color-control .hex {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    color: var(--panel-text);
+    text-transform: uppercase;
+  }
+
+  /* Buttons */
+  .btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--panel-text);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--panel-border);
+    border-radius: 9px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+    width: 100%;
+    text-align: center;
+  }
+
+  .btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255,255,255,0.25); }
+
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #16060c;
+  }
+
+  .btn.primary:hover { background: #ff74a0; }
+
+  #drop-zone {
+    border: 1px dashed rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    padding: 14px 12px;
+    text-align: center;
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--panel-dim);
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+  }
+
+  #drop-zone:hover, #drop-zone.dragover {
+    border-color: var(--accent);
+    color: var(--panel-text);
+    background: rgba(255, 91, 141, 0.08);
+  }
+
+  #drop-zone strong { color: var(--accent); font-weight: 600; }
+
+  select {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    width: 100%;
+    padding: 8px 10px;
+    color: var(--panel-text);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    cursor: pointer;
+    outline: none;
+  }
+
+  select option { background: #16171b; }
+
+  .divider {
+    height: 1px;
+    background: var(--panel-border);
+    margin: 2px 0;
+  }
+
+  .section-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent-2);
+  }
+
+  /* Small floating toggle when panel hidden */
+  #panel-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 11;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg);
+    backdrop-filter: blur(18px);
+    color: var(--panel-text);
+    font-size: 1rem;
+    cursor: pointer;
+    display: none;
+    place-items: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  }
+
+  #panel-toggle.visible { display: grid; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <img id="bg-image" alt="Splash background">
+  <canvas id="overlay-canvas"></canvas>
+  <div id="splash-content">
+    <div>
+      <h1>Airfoil</h1>
+      <p>Move to reveal</p>
+    </div>
+  </div>
+</div>
+
+<button id="panel-toggle" title="Show controls">✦</button>
+
+<aside id="panel">
+  <header>
+    <div class="title">Pixel<span>·</span>Reveal</div>
+    <button class="btn" style="width:auto;padding:6px 10px" id="hide-panel">Hide</button>
+  </header>
+  <div id="panel-body">
+
+    <div class="section-label">Background</div>
+
+    <div id="drop-zone">
+      Drop image here or <strong>browse</strong>
+      <input type="file" id="file-input" accept="image/*" hidden>
+    </div>
+
+    <div class="section-label">Overlay</div>
+
+    <div class="control">
+      <label>Color</label>
+      <div class="color-control">
+        <input type="color" id="overlay-color" value="#f0f0f0">
+        <span class="hex" id="overlay-hex">#F0F0F0</span>
+      </div>
+    </div>
+
+    <div class="control">
+      <label>Opacity <output id="opacity-out">100%</output></label>
+      <input type="range" id="overlay-opacity" min="20" max="100" value="100">
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">Grid</div>
+
+    <div class="control">
+      <label>Cell size <output id="cell-out">48 px</output></label>
+      <input type="range" id="cell-size" min="12" max="160" value="48">
+    </div>
+
+    <div class="control">
+      <label>Brush radius <output id="brush-out">1 cell</output></label>
+      <input type="range" id="brush-size" min="0" max="4" value="1">
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">Trail</div>
+
+    <div class="control">
+      <label>Mode</label>
+      <select id="trail-mode">
+        <option value="fade">Fade back (trailing)</option>
+        <option value="stay">Stay revealed</option>
+      </select>
+    </div>
+
+    <div class="control" id="linger-control">
+      <label>Linger <output id="linger-out">0.6 s</output></label>
+      <input type="range" id="linger" min="0" max="4000" value="600" step="50">
+    </div>
+
+    <div class="control" id="fade-control">
+      <label>Fade duration <output id="fade-out">1.2 s</output></label>
+      <input type="range" id="fade" min="100" max="5000" value="1200" step="50">
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <button class="btn" id="reset-btn">Reset</button>
+      <button class="btn primary" id="clear-btn">Reveal all</button>
+    </div>
+
+  </div>
+</aside>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- State ----------
+  const cfg = {
+    cellSize: 48,        // px per grid cell
+    brushRadius: 1,      // extra cells revealed around the cursor cell
+    lingerMs: 600,       // fully-revealed hold time before fading back
+    fadeMs: 1200,        // fade-back duration
+    trailMode: 'fade',   // 'fade' | 'stay'
+    overlayColor: '#f0f0f0',
+    overlayOpacity: 1,
+  };
+
+  const stage = document.getElementById('stage');
+  const canvas = document.getElementById('overlay-canvas');
+  const ctx = canvas.getContext('2d');
+  const bgImage = document.getElementById('bg-image');
+
+  let cols = 0, rows = 0;
+  let revealedAt = null;   // Float64Array of timestamps, 0 = covered
+  let allRevealed = false;
+  let lastPointer = null;  // {x, y} previous pointer position for interpolation
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // ---------- Grid ----------
+  function rebuildGrid() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(stage.clientWidth * dpr);
+    canvas.height = Math.round(stage.clientHeight * dpr);
+    cols = Math.ceil(stage.clientWidth / cfg.cellSize);
+    rows = Math.ceil(stage.clientHeight / cfg.cellSize);
+    revealedAt = new Float64Array(cols * rows);
+    allRevealed = false;
+  }
+
+  function revealCell(cx, cy, now) {
+    if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return;
+    revealedAt[cy * cols + cx] = now;
+  }
+
+  function revealAt(x, y, now) {
+    const cx = Math.floor(x / cfg.cellSize);
+    const cy = Math.floor(y / cfg.cellSize);
+    const r = cfg.brushRadius;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        // Round-ish brush: skip far corners for radius >= 2
+        if (r >= 2 && (dx * dx + dy * dy) > r * r + 1) continue;
+        revealCell(cx + dx, cy + dy, now);
+      }
+    }
+  }
+
+  // Interpolate along fast pointer moves so the trail has no gaps
+  function revealStroke(from, to, now) {
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(1, Math.ceil(dist / (cfg.cellSize * 0.5)));
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      revealAt(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, now);
+    }
+  }
+
+  // ---------- Render loop ----------
+  function cellAlpha(t, now) {
+    if (allRevealed) return 0;
+    if (t === 0) return 1;                      // never touched: fully covered
+    if (cfg.trailMode === 'stay') return 0;     // touched: stays revealed
+    const dt = now - t;
+    if (dt <= cfg.lingerMs) return 0;           // still fully revealed
+    const f = (dt - cfg.lingerMs) / cfg.fadeMs; // fading back to covered
+    return f >= 1 ? 1 : f * f * (3 - 2 * f);    // smoothstep ease
+  }
+
+  function draw(now) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
+    ctx.fillStyle = cfg.overlayColor;
+
+    const size = cfg.cellSize;
+    for (let cy = 0; cy < rows; cy++) {
+      const y = cy * size;
+      for (let cx = 0; cx < cols; cx++) {
+        const a = cellAlpha(revealedAt[cy * cols + cx], now);
+        if (a <= 0.004) continue;
+        ctx.globalAlpha = a * cfg.overlayOpacity;
+        // +0.5 bleed hides sub-pixel seams between neighbouring cells
+        ctx.fillRect(cx * size, y, size + 0.5, size + 0.5);
+      }
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(draw);
+  }
+
+  // ---------- Pointer ----------
+  stage.addEventListener('pointermove', (e) => {
+    const rect = stage.getBoundingClientRect();
+    const p = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const now = performance.now();
+    allRevealed = false;
+    if (lastPointer) revealStroke(lastPointer, p, now);
+    else revealAt(p.x, p.y, now);
+    lastPointer = p;
+  });
+
+  stage.addEventListener('pointerleave', () => { lastPointer = null; });
+  stage.addEventListener('pointerdown', (e) => {
+    const rect = stage.getBoundingClientRect();
+    allRevealed = false;
+    revealAt(e.clientX - rect.left, e.clientY - rect.top, performance.now());
+  });
+
+  // ---------- Default background (procedural watercolor placeholder) ----------
+  function makeDefaultBackground() {
+    const w = 1440, h = 1000;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+
+    g.fillStyle = '#4a90d9';
+    g.fillRect(0, 0, w, h);
+
+    const blobs = [
+      { x: 0.42, y: 0.30, r: 0.55, color: 'rgba(20, 40, 170, 0.85)' },
+      { x: 0.55, y: 0.50, r: 0.30, color: 'rgba(90, 190, 215, 0.9)' },
+      { x: 0.78, y: 0.55, r: 0.38, color: 'rgba(255, 150, 190, 0.85)' },
+      { x: 0.62, y: 0.78, r: 0.30, color: 'rgba(255, 120, 170, 0.8)' },
+      { x: 0.35, y: 0.42, r: 0.16, color: 'rgba(140, 60, 200, 0.6)' },
+      { x: 0.15, y: 0.75, r: 0.40, color: 'rgba(40, 90, 200, 0.5)' },
+      { x: 0.85, y: 0.15, r: 0.30, color: 'rgba(120, 180, 230, 0.6)' },
+    ];
+    for (const b of blobs) {
+      const grad = g.createRadialGradient(b.x * w, b.y * h, 0, b.x * w, b.y * h, b.r * w);
+      grad.addColorStop(0, b.color);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, w, h);
+    }
+
+    // Paper-grain noise
+    const noise = g.getImageData(0, 0, w, h);
+    const d = noise.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (Math.random() - 0.5) * 26;
+      d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    }
+    g.putImageData(noise, 0, 0);
+
+    return c.toDataURL('image/png');
+  }
+
+  // ---------- Controls ----------
+  const $ = (id) => document.getElementById(id);
+
+  function paintRangeFill(input) {
+    const min = +input.min, max = +input.max, val = +input.value;
+    input.style.setProperty('--fill', ((val - min) / (max - min)) * 100 + '%');
+  }
+
+  function bindRange(id, outId, fmt, apply) {
+    const input = $(id), out = $(outId);
+    const update = () => {
+      paintRangeFill(input);
+      out.textContent = fmt(+input.value);
+      apply(+input.value);
+    };
+    input.addEventListener('input', update);
+    update();
+  }
+
+  bindRange('cell-size', 'cell-out', v => v + ' px', v => { cfg.cellSize = v; rebuildGrid(); });
+  bindRange('brush-size', 'brush-out', v => v === 0 ? '1 cell' : (2 * v + 1) + '×' + (2 * v + 1), v => { cfg.brushRadius = v; });
+  bindRange('overlay-opacity', 'opacity-out', v => v + '%', v => { cfg.overlayOpacity = v / 100; });
+  bindRange('linger', 'linger-out', v => (v / 1000).toFixed(1) + ' s', v => { cfg.lingerMs = v; });
+  bindRange('fade', 'fade-out', v => (v / 1000).toFixed(1) + ' s', v => { cfg.fadeMs = v; });
+
+  $('overlay-color').addEventListener('input', (e) => {
+    cfg.overlayColor = e.target.value;
+    $('overlay-hex').textContent = e.target.value.toUpperCase();
+  });
+
+  $('trail-mode').addEventListener('change', (e) => {
+    cfg.trailMode = e.target.value;
+    const disabled = cfg.trailMode === 'stay';
+    $('linger-control').style.opacity = disabled ? 0.35 : 1;
+    $('fade-control').style.opacity = disabled ? 0.35 : 1;
+    $('linger').disabled = disabled;
+    $('fade').disabled = disabled;
+  });
+
+  $('reset-btn').addEventListener('click', () => { rebuildGrid(); });
+  $('clear-btn').addEventListener('click', () => { allRevealed = true; });
+
+  // Panel show/hide
+  const panel = $('panel');
+  const toggle = $('panel-toggle');
+  $('hide-panel').addEventListener('click', () => {
+    panel.classList.add('hidden');
+    toggle.classList.add('visible');
+  });
+  toggle.addEventListener('click', () => {
+    panel.classList.remove('hidden');
+    toggle.classList.remove('visible');
+  });
+
+  // ---------- Image upload ----------
+  const dropZone = $('drop-zone');
+  const fileInput = $('file-input');
+
+  function loadImageFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    bgImage.onload = () => URL.revokeObjectURL(url);
+    bgImage.src = url;
+  }
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => loadImageFile(fileInput.files[0]));
+
+  for (const evt of ['dragover', 'dragenter']) {
+    window.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  }
+  for (const evt of ['dragleave', 'drop']) {
+    window.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); });
+  }
+  window.addEventListener('drop', (e) => loadImageFile(e.dataTransfer.files[0]));
+
+  // ---------- Boot ----------
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(rebuildGrid, 120);
+  });
+
+  bgImage.src = makeDefaultBackground();
+  rebuildGrid();
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
