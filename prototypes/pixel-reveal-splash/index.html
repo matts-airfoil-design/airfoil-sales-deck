@@ -350,6 +350,19 @@
       <input type="range" id="brush-size" min="0" max="4" value="1">
     </div>
 
+    <div class="control">
+      <label>Outline thickness <output id="line-out">1 px</output></label>
+      <input type="range" id="line-width" min="0" max="6" value="1">
+    </div>
+
+    <div class="control">
+      <label>Outline color</label>
+      <div class="color-control">
+        <input type="color" id="line-color" value="#ffffff">
+        <span class="hex" id="line-hex">#FFFFFF</span>
+      </div>
+    </div>
+
     <div class="divider"></div>
     <div class="section-label">Scatter</div>
 
@@ -385,6 +398,14 @@
     </div>
 
     <div class="divider"></div>
+    <div class="section-label">Tease</div>
+
+    <div class="control">
+      <label>Idle interval <output id="tease-out">3.0 s</output></label>
+      <input type="range" id="tease" min="0" max="10000" value="3000" step="500">
+    </div>
+
+    <div class="divider"></div>
 
     <div class="row">
       <button class="btn" id="reset-btn">Reset</button>
@@ -404,6 +425,9 @@
     brushRadius: 1,      // extra cells revealed around the cursor cell
     scatterRadius: 160,  // px radius around the cursor for random scattered cells
     scatterCount: 8,     // scattered cells spawned per pointer move
+    gridLineW: 1,        // cell outline thickness (0 = no outlines)
+    gridLineColor: '#ffffff',
+    teaseMs: 3000,       // idle interval between teaser bursts (0 = off)
     lingerMs: 600,       // fully-revealed hold time before fading back
     fadeMs: 1200,        // fade-back duration
     trailMode: 'fade',   // 'fade' | 'stay'
@@ -433,9 +457,12 @@
     allRevealed = false;
   }
 
-  function revealCell(cx, cy, now) {
+  // Positive stamp = revealed by the cursor; negative stamp = teaser reveal,
+  // which always fades back (even in "stay" mode) and may be scheduled slightly
+  // in the future for a staggered pop-in.
+  function revealCell(cx, cy, stamp) {
     if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return;
-    revealedAt[cy * cols + cx] = now;
+    revealedAt[cy * cols + cx] = stamp;
   }
 
   function revealAt(x, y, now) {
@@ -478,19 +505,32 @@
   function cellAlpha(t, now) {
     if (allRevealed) return 0;
     if (t === 0) return 1;                      // never touched: fully covered
-    if (cfg.trailMode === 'stay') return 0;     // touched: stays revealed
-    const dt = now - t;
+    const tease = t < 0;
+    const stamp = tease ? -t : t;
+    const dt = now - stamp;
+    if (dt < 0) return 1;                       // teaser scheduled, not yet open
+    if (!tease && cfg.trailMode === 'stay') return 0; // cursor reveal persists
     if (dt <= cfg.lingerMs) return 0;           // still fully revealed
     const f = (dt - cfg.lingerMs) / cfg.fadeMs; // fading back to covered
     return f >= 1 ? 1 : f * f * (3 - 2 * f);    // smoothstep ease
   }
 
   function draw(now) {
+    if (cfg.teaseMs > 0 && now - lastTease >= cfg.teaseMs && now - lastActivity > 1600) {
+      teaseBurst(now);
+      lastTease = now;
+    }
+
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, stage.clientWidth, stage.clientHeight);
     ctx.fillStyle = cfg.overlayColor;
 
     const size = cfg.cellSize;
+    const lw = Math.min(cfg.gridLineW, size / 2);
+    if (lw > 0) {
+      ctx.strokeStyle = cfg.gridLineColor;
+      ctx.lineWidth = lw;
+    }
     for (let cy = 0; cy < rows; cy++) {
       const y = cy * size;
       for (let cx = 0; cx < cols; cx++) {
@@ -499,10 +539,37 @@
         ctx.globalAlpha = a * cfg.overlayOpacity;
         // +0.5 bleed hides sub-pixel seams between neighbouring cells
         ctx.fillRect(cx * size, y, size + 0.5, size + 0.5);
+        if (lw > 0) ctx.strokeRect(cx * size + lw / 2, y + lw / 2, size - lw, size - lw);
       }
     }
     ctx.globalAlpha = 1;
     requestAnimationFrame(draw);
+  }
+
+  // ---------- Idle teaser ----------
+  let lastTease = 0;
+  let lastActivity = 0;
+
+  // Reveal a random cluster of cells with a staggered pop-in, plus a sparkle
+  // halo around it. Teaser stamps are negative so they always fade back.
+  function teaseBurst(now) {
+    const cx = 1 + Math.floor(Math.random() * Math.max(1, cols - 2));
+    const cy = 1 + Math.floor(Math.random() * Math.max(1, rows - 2));
+    const r = 2 + Math.floor(Math.random() * 2);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r + 1) continue;
+        revealCell(cx + dx, cy + dy, -(now + Math.random() * 350));
+      }
+    }
+    const px = (cx + 0.5) * cfg.cellSize, py = (cy + 0.5) * cfg.cellSize;
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = (r + 1 + Math.random() * 3) * cfg.cellSize;
+      revealCell(Math.floor((px + Math.cos(a) * d) / cfg.cellSize),
+                 Math.floor((py + Math.sin(a) * d) / cfg.cellSize),
+                 -(now + Math.random() * 450));
+    }
   }
 
   // ---------- Pointer ----------
@@ -511,6 +578,7 @@
     const p = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     const now = performance.now();
     allRevealed = false;
+    lastActivity = now;
     if (lastPointer) revealStroke(lastPointer, p, now);
     else revealAt(p.x, p.y, now);
     scatterAt(p.x, p.y, now);
@@ -523,6 +591,7 @@
     allRevealed = false;
     const x = e.clientX - rect.left, y = e.clientY - rect.top;
     const now = performance.now();
+    lastActivity = now;
     revealAt(x, y, now);
     scatterAt(x, y, now);
   });
@@ -618,10 +687,17 @@
   bindRange('scatter-count', 'scatter-count-out', v => v === 0 ? 'Off' : v + ' / move', v => { cfg.scatterCount = v; });
   bindRange('linger', 'linger-out', v => (v / 1000).toFixed(1) + ' s', v => { cfg.lingerMs = v; });
   bindRange('fade', 'fade-out', v => (v / 1000).toFixed(1) + ' s', v => { cfg.fadeMs = v; });
+  bindRange('line-width', 'line-out', v => v === 0 ? 'Off' : v + ' px', v => { cfg.gridLineW = v; });
+  bindRange('tease', 'tease-out', v => v === 0 ? 'Off' : (v / 1000).toFixed(1) + ' s', v => { cfg.teaseMs = v; });
 
   $('overlay-color').addEventListener('input', (e) => {
     cfg.overlayColor = e.target.value;
     $('overlay-hex').textContent = e.target.value.toUpperCase();
+  });
+
+  $('line-color').addEventListener('input', (e) => {
+    cfg.gridLineColor = e.target.value;
+    $('line-hex').textContent = e.target.value.toUpperCase();
   });
 
   $('trail-mode').addEventListener('change', (e) => {

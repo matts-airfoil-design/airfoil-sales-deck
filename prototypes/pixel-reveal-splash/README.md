@@ -12,12 +12,15 @@ Open `index.html` in any browser — no build step or server needed.
   recreation of the V01 watercolor (indigo ring, teal centre, pink bloom) loads
   by default.
 - **Overlay** — color and opacity of the covering layer (e.g. V02's light gray).
-- **Grid** — cell size in pixels, and brush radius (how many cells the cursor
-  reveals at once).
+- **Grid** — cell size in pixels, brush radius (how many cells the cursor
+  reveals at once), and cell outline thickness and color (0 = no outlines).
 - **Scatter** — random cells revealed around the cursor rather than strictly
   under it: radius sets how far they spread, density how many appear per move.
 - **Trail** — *Fade back* mode restores the overlay after a configurable linger
   and fade duration; *Stay revealed* keeps erased cells open.
+- **Tease** — while the cursor is idle, a random patch of the image pops through
+  at the chosen interval and fades back, hinting that the page is interactive.
+  Teaser reveals always fade, even in *Stay revealed* mode. 0 = off.
 - **Reset** re-covers everything; **Reveal all** clears the overlay.
 
 The panel can be hidden to preview the splash screen clean; the ✦ button brings
