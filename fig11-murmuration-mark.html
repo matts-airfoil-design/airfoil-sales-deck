@@ -1,0 +1,657 @@
+<title>fig — murmuration mark</title>
+<style>
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #faf5ee;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  .stage { position: fixed; inset: 0; }
+  canvas#sim { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .grain { position: absolute; inset: 0; pointer-events: none; opacity: 0.3; mix-blend-mode: multiply; }
+  .ui { position: absolute; inset: 0; pointer-events: none; }
+
+  .gear {
+    position: absolute; top: 18px; right: 20px;
+    width: 36px; height: 36px;
+    pointer-events: auto;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(120,110,96,0.45);
+    border-radius: 50%;
+    background: rgba(255,252,246,0.78);
+    backdrop-filter: blur(5px);
+    color: #5a5548;
+    cursor: pointer;
+    transition: transform 0.25s;
+  }
+  .gear:hover { transform: rotate(40deg); }
+  .gear:focus-visible { outline: 2px solid #305cc4; outline-offset: 2px; }
+
+  .panel {
+    position: absolute; top: 62px; right: 20px;
+    width: 232px;
+    pointer-events: auto;
+    background: rgba(255,252,246,0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(120,110,96,0.35);
+    border-radius: 6px;
+    padding: 16px 16px 14px;
+    color: #3f3a30;
+  }
+  .panel .field { display: block; margin-bottom: 13px; }
+  .panel .lab {
+    display: flex; justify-content: space-between; align-items: baseline;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    font-size: 10.5px; color: #746e5f;
+  }
+  .panel .lab output { font-variant-numeric: tabular-nums; color: #3f3a30; letter-spacing: 0; font-size: 11px; }
+  .panel input[type="range"] {
+    display: block; width: 100%; margin: 7px 0 0;
+    accent-color: #305cc4;
+  }
+  .panel input[type="range"]:focus-visible { outline: 2px solid #305cc4; outline-offset: 2px; }
+  .panel .swrow { display: flex; align-items: center; gap: 7px; margin-top: 7px; }
+  .panel .sw {
+    width: 23px; height: 23px; padding: 0;
+    border: 1px solid rgba(120,110,96,0.5);
+    border-radius: 4px; cursor: pointer;
+  }
+  .panel .sw.on { outline: 2px solid #305cc4; outline-offset: 1px; }
+  .panel .sw:focus-visible { outline: 2px solid #305cc4; outline-offset: 1px; }
+  .panel input[type="color"] {
+    width: 30px; height: 25px; padding: 0; margin-left: auto;
+    border: 1px solid rgba(120,110,96,0.5); border-radius: 4px;
+    background: none; cursor: pointer;
+  }
+</style>
+
+<div class="stage" id="stage">
+  <canvas id="sim"></canvas>
+  <div class="grain" id="grain"></div>
+  <div class="ui">
+    <button class="gear" id="gear" aria-label="Settings" aria-expanded="false">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.2"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+    <div class="panel" id="panel" hidden>
+      <label class="field">
+        <span class="lab">pixel density <output id="oDen">1.0&times;</output></span>
+        <input id="sDen" type="range" min="0.3" max="2" step="0.05" value="1">
+      </label>
+      <label class="field">
+        <span class="lab">animation speed <output id="oSpd">1.0&times;</output></span>
+        <input id="sSpd" type="range" min="0.25" max="2.5" step="0.05" value="1">
+      </label>
+      <label class="field">
+        <span class="lab">pixel size <output id="oSiz">1.0&times;</output></span>
+        <input id="sSiz" type="range" min="0.5" max="2.4" step="0.05" value="1">
+      </label>
+      <label class="field">
+        <span class="lab">pixel gap <output id="oGap">16%</output></span>
+        <input id="sGap" type="range" min="0" max="0.42" step="0.01" value="0.16">
+      </label>
+      <div class="field" style="margin-bottom:2px">
+        <span class="lab">background</span>
+        <div class="swrow" id="swrow">
+          <button class="sw on" data-c="#faf5ee" style="background:#faf5ee" aria-label="Warm paper"></button>
+          <button class="sw" data-c="#ecece9" style="background:#ecece9" aria-label="Cool paper"></button>
+          <button class="sw" data-c="#dfe5e0" style="background:#dfe5e0" aria-label="Sage"></button>
+          <button class="sw" data-c="#1a1712" style="background:#1a1712" aria-label="Ink"></button>
+          <button class="sw" data-c="#161d33" style="background:#161d33" aria-label="Night"></button>
+          <input type="color" id="sBg" value="#faf5ee" aria-label="Custom background color">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  // a murmuration that consolidates into the fig rosette. birds flock with
+  // alignment, cohesion and separation around wandering cores, depositing a
+  // pale watercolor wake into the grid — the fig05 consolidation palette:
+  // warm paper, film grain, pale washes, one strong pigment. a few at a time,
+  // birds graduate: they fly along faint curved through-lines into the mark
+  // at the heart of the page, landing as vivid watercolor squares that deep
+  // ultramarine then grows through. the logo is never drawn — it only exists
+  // where birds have settled. hover over the mark and the pixels you touch
+  // disperse back into the murmuration; the flock refills them naturally.
+  // click for a strike — a shockwave that scatters the cloud.
+  const TAU = Math.PI * 2;
+  const canvas = document.getElementById('sim');
+  const stage = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  // film grain, as in fig05
+  (() => {
+    const n = document.createElement('canvas'); n.width = n.height = 200;
+    const nc = n.getContext('2d'); const img = nc.createImageData(200, 200);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = 240 + Math.random() * 15 | 0;
+      img.data[i] = img.data[i+1] = img.data[i+2] = v; img.data[i+3] = 255;
+    }
+    nc.putImageData(img, 0, 0);
+    document.getElementById('grain').style.background = `url(${n.toDataURL()})`;
+  })();
+
+  const NP = new Uint8Array(512);
+  for (let i = 0; i < 512; i++) NP[i] = Math.random() * 256 | 0;
+  function vn(x, y) {
+    const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255;
+    const xf = x - Math.floor(x), yf = y - Math.floor(y);
+    const h = (i, j) => NP[(NP[(xi + i) & 255] + yi + j) & 255] / 255;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    return h(0,0)*(1-u)*(1-v) + h(1,0)*u*(1-v) + h(0,1)*(1-u)*v + h(1,1)*u*v;
+  }
+
+  // fig05's pigments: pale multicolor wash for the flock's wake, vivid
+  // multicolor for landed pixels, deep ultramarine for consolidation
+  const ATLAS = 1024;
+  function makeAtlas(hues, alphaLo, alphaHi, blobs, base) {
+    const c = document.createElement('canvas');
+    c.width = c.height = ATLAS;
+    const a = c.getContext('2d');
+    a.fillStyle = base;
+    a.fillRect(0, 0, ATLAS, ATLAS);
+    for (let i = 0; i < blobs; i++) {
+      const [r, g, b] = hues[Math.random() * hues.length | 0];
+      const x = rnd(0, ATLAS), y = rnd(0, ATLAS), rad = rnd(18, 70);
+      const grad = a.createRadialGradient(x, y, 0, x, y, rad);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${rnd(alphaLo, alphaHi)})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      a.fillStyle = grad;
+      a.beginPath(); a.arc(x, y, rad, 0, TAU); a.fill();
+    }
+    for (let i = 0; i < 7000; i++) {
+      a.fillStyle = `rgba(30,26,20,${rnd(0.015, 0.05)})`;
+      a.fillRect(rnd(0, ATLAS), rnd(0, ATLAS), 1.5, 1.5);
+    }
+    return c;
+  }
+  const MULTI = [[75,143,217],[67,179,160],[76,175,99],[168,201,75],[240,138,60],[236,109,155],[139,107,217]];
+  const ULTRA = [[38,76,178],[52,104,204],[64,58,168],[36,120,158],[46,90,196]];
+  const atlasWake  = makeAtlas(MULTI, 0.3, 0.55, 480, '#f8f3ea');
+  const atlasVivid = makeAtlas(MULTI, 0.5, 0.85, 560, '#efe9dd');
+  const atlasDeep  = makeAtlas(ULTRA, 0.6, 0.92, 560, '#dfe4ef');
+  const PINK = 'rgb(236,109,155)';
+
+  // crop centers biased toward pigment so small squares stay vivid
+  function pigmentCrops(cnv, br, bg, bb) {
+    const id = cnv.getContext('2d').getImageData(0, 0, ATLAS, ATLAS).data;
+    const out = [];
+    let tries = 0;
+    while (out.length < 1400 && tries++ < 26000) {
+      const x = 20 + Math.random() * (ATLAS - 40) | 0, y = 20 + Math.random() * (ATLAS - 40) | 0;
+      const i = (y * ATLAS + x) * 4;
+      const dr = id[i] - br, dg = id[i + 1] - bg, db = id[i + 2] - bb;
+      if (dr * dr + dg * dg + db * db > 2200) out.push([x, y]);
+    }
+    if (!out.length) out.push([ATLAS / 2, ATLAS / 2]);
+    return out;
+  }
+  const wakeCrops  = pigmentCrops(atlasWake, 248, 243, 234);
+  const vividCrops = pigmentCrops(atlasVivid, 239, 233, 221);
+  const deepCrops  = pigmentCrops(atlasDeep, 223, 228, 239);
+
+  let W = 0, H = 0, dpr = 1, G = 15;
+  let cols = 0, rows = 0;
+  let cellI = new Float32Array(0);      // wake brightness per grid cell
+  let cellAX = new Float32Array(0);     // wake crop per grid cell
+  let cellAY = new Float32Array(0);
+  let birds = [], strikes = [], lines = [];
+  let simT = 0, claimT = 0;
+  let N = 640;
+
+  const SET = { density: 1, speed: 1, size: 1, gap: 0.16, bg: '#faf5ee' };
+
+  // ---------- the mark: exact fig rosette (Group 194), assembled inside-out ----------
+  const LOGO = [[6,5],[5,6],[6,6],[6,7],[4,3],[3,4],[3,7],[4,8],[7,8],[8,7],[8,4],[7,3],[6,2],[2,5],[9,5],[6,9],[4,1],[1,4],[1,7],[4,10],[7,10],[10,7],[10,4],[7,1],[2,2],[2,9],[9,9],[9,2],[3,1],[1,3],[1,8],[3,10],[8,10],[10,8],[10,3],[8,1],[11,6],[11,5],[5,0],[0,5],[0,6],[5,11],[6,11],[6,0]];
+  let slots = [], L = 26, LX = 0, LY = 0, logoR = 200;
+  function buildSlots() {
+    slots = LOGO.map(([ci, cj]) => {
+      const [u, v] = vividCrops[Math.random() * vividCrops.length | 0];
+      const [du, dv] = deepCrops[Math.random() * deepCrops.length | 0];
+      return { ci, cj, x: 0, y: 0, bird: null, f: 0, con: 0, refillT: 0, u, v, du, dv, ph: rnd(0, TAU) };
+    });
+  }
+  function layout() {
+    L = Math.min(Math.min(W, H) * 0.4 / 12 * SET.size, Math.min(W, H) * 0.75 / 12);
+    LX = W * 0.5; LY = H * 0.5;
+    logoR = L * 6.6;
+    for (const s of slots) {
+      s.x = LX + (s.ci - 5.5) * L;
+      s.y = LY + (s.cj - 5.5) * L;
+    }
+  }
+
+  // ---------- flock cores: wandering centers the murmuration gathers around ----------
+  const MAXK = 3;
+  let activeK = 2, roamT = 0, roamDur = 15000;
+  const coreSwirl = [1, -1, 1];
+  function corePos(k, t) {
+    return [
+      W * (0.2 + 0.6 * vn(t * 0.000026 + k * 17.3, k * 9.1 + 3.7)),
+      H * (0.14 + 0.52 * vn(t * 0.000023 + k * 7.7, k * 13.9 + 40)),
+    ];
+  }
+  function coreVel(k, t) {
+    const [x0, y0] = corePos(k, t - 400);
+    const [x1, y1] = corePos(k, t + 400);
+    return [(x1 - x0) / 0.8, (y1 - y0) / 0.8];
+  }
+  function reshuffleFlocks() {
+    roamDur = rnd(12000, 22000);
+    activeK = 1 + (Math.random() * MAXK | 0);
+    for (let k = 0; k < MAXK; k++) coreSwirl[k] = Math.random() < 0.5 ? 1 : -1;
+    for (const b of birds) {
+      if (b.mode !== 'free') continue;
+      b.flock = Math.random() * activeK | 0;
+      const ang = rnd(0, TAU);
+      b.vx += Math.cos(ang) * rnd(30, 110);
+      b.vy += Math.sin(ang) * rnd(30, 110);
+    }
+  }
+
+  // ---------- birds ----------
+  function makeBird() {
+    const k = Math.random() * activeK | 0;
+    const [cx, cy] = corePos(k, 0);
+    const ang = rnd(0, TAU), r = rnd(0, 180);
+    const [rax, ray] = wakeCrops[Math.random() * wakeCrops.length | 0];
+    return {
+      x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r,
+      vx: rnd(-80, 80), vy: rnd(-80, 80),
+      mode: 'free',                 // free | fly | held
+      flock: k, slot: null,
+      l: null, ft: 0, fdur: 1,
+      rax, ray, seed: rnd(0, 100), ph: rnd(0, TAU),
+    };
+  }
+
+  // curved through-lines, as in fig05's graduation flights
+  function makeLine(x0, y0, x1, y1) {
+    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    const dx = x1 - x0, dy = y1 - y0;
+    const len = Math.hypot(dx, dy) || 1;
+    const k = rnd(-0.18, 0.18);
+    return { x0, y0, x1, y1, cxp: mx - dy / len * len * k, cyp: my + dx / len * len * k };
+  }
+  function quad(l, t) {
+    const u = 1 - t;
+    return [
+      u * u * l.x0 + 2 * u * t * l.cxp + t * t * l.x1,
+      u * u * l.y0 + 2 * u * t * l.cyp + t * t * l.y1,
+    ];
+  }
+  function addLine(l, dur) {
+    lines.push({ ...l, t: 0, dur });
+    if (lines.length > 14) lines.shift();
+  }
+
+  // ---------- claiming: birds graduate into the mark, a few at a time ----------
+  function claim(slot) {
+    let best = null, bd = 1e18;
+    for (const b of birds) {
+      if (b.mode !== 'free') continue;
+      const d = (b.x - slot.x) ** 2 + (b.y - slot.y) ** 2;
+      if (d < bd) { bd = d; best = b; }
+    }
+    if (!best) return;
+    best.mode = 'fly';
+    best.slot = slot; slot.bird = best;
+    best.ft = 0; best.fdur = rnd(900, 1500);
+    best.l = makeLine(best.x, best.y, slot.x, slot.y);
+    if (Math.random() < 0.5) addLine(best.l, rnd(2200, 3200));
+  }
+  function release(slot, burst) {
+    const b = slot.bird;
+    if (!b) return;
+    slot.bird = null; slot.con = 0;
+    slot.refillT = rnd(1400, 2800);
+    b.slot = null; b.mode = 'free';
+    b.flock = Math.random() * activeK | 0;
+    const ang = Math.atan2(b.y - LY, b.x - LX) + rnd(-0.5, 0.5);
+    const sp = burst ? rnd(150, 260) : rnd(90, 170);
+    b.vx = Math.cos(ang) * sp; b.vy = Math.sin(ang) * sp;
+  }
+
+  let px = -1e4, py = -1e4;
+
+  // ---------- update ----------
+  const cores = [[0,0],[0,0],[0,0]], cvels = [[0,0],[0,0],[0,0]];
+  function update(now, dt) {
+    simT += dt;
+    roamT += dt;
+    if (roamT > roamDur) { roamT = 0; reshuffleFlocks(); }
+
+    // graduation: after a first free roam, unfilled slots pull in the
+    // nearest birds one or two at a time, inside-out (LOGO order)
+    claimT -= dt;
+    if (simT > 3500 && claimT <= 0) {
+      claimT = rnd(170, 340);
+      let n = Math.random() < 0.35 ? 2 : 1;
+      for (const s of slots) {
+        if (!n) break;
+        if (s.bird || s.refillT > 0) continue;
+        const pd = Math.hypot(px - s.x, py - s.y);
+        if (pd < L * 2.2) continue;          // don't refill under the falcon
+        claim(s); n--;
+      }
+    }
+
+    for (let k = 0; k < MAXK; k++) {
+      const kk = Math.min(k, activeK - 1);
+      cores[k] = corePos(kk, simT);
+      cvels[k] = coreVel(kk, simT);
+    }
+
+    const CS = 46;
+    const bucket = new Map();
+    for (const b of birds) {
+      if (b.mode !== 'free') continue;
+      const key = (b.x / CS | 0) * 4096 + (b.y / CS | 0);
+      const cell = bucket.get(key);
+      if (cell) cell.push(b); else bucket.set(key, [b]);
+    }
+
+    const s = dt / 1000;
+    const maxV = 155, minV = 55;
+
+    for (const b of birds) {
+      if (b.mode === 'held') continue;
+      if (b.mode === 'fly') {
+        b.ft += dt / b.fdur;
+        const t = Math.min(1, b.ft);
+        const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        const [qx, qy] = quad(b.l, e);
+        b.x = qx; b.y = qy;
+        if (b.ft >= 1) { b.mode = 'held'; b.x = b.slot.x; b.y = b.slot.y; }
+        continue;
+      }
+
+      let ax = 0, ay = 0;
+      const bi = b.x / CS | 0, bj = b.y / CS | 0;
+      let n = 0, avx = 0, avy = 0, cx = 0, cy = 0, sepx = 0, sepy = 0;
+      for (let dj = -1; dj <= 1 && n < 14; dj++) for (let di = -1; di <= 1 && n < 14; di++) {
+        const cell = bucket.get((bi + di) * 4096 + (bj + dj));
+        if (!cell) continue;
+        for (const o of cell) {
+          if (o === b) continue;
+          const dx = o.x - b.x, dy = o.y - b.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > CS * CS) continue;
+          const d = Math.sqrt(d2) || 1;
+          if (d < 15) { sepx -= dx / d * (15 - d); sepy -= dy / d * (15 - d); }
+          avx += o.vx; avy += o.vy; cx += o.x; cy += o.y;
+          if (++n >= 14) break;
+        }
+      }
+      if (n) {
+        ax += (avx / n - b.vx) * 2.4;
+        ay += (avy / n - b.vy) * 2.4;
+        ax += (cx / n - b.x) * 1.5;
+        ay += (cy / n - b.y) * 1.5;
+      }
+      ax += sepx * 34; ay += sepy * 34;
+
+      const co = cores[b.flock], cv = cvels[b.flock];
+      let gx = co[0] - b.x, gy = co[1] - b.y;
+      const cs2 = Math.hypot(cv[0], cv[1]);
+      if (cs2 > 1) {
+        const ux = cv[0] / cs2, uy = cv[1] / cs2;
+        const par = gx * ux + gy * uy;
+        gx -= ux * par * 0.55; gy -= uy * par * 0.55;
+      }
+      const gd = Math.hypot(gx, gy) || 1;
+      const pull = Math.min(220, Math.max(0, gd - 45) * 1.15);
+      ax += gx / gd * pull; ay += gy / gd * pull;
+      const sw = coreSwirl[b.flock] * 30;
+      ax += -gy / gd * sw; ay += gx / gd * sw;
+
+      const ta = vn(b.x * 0.003 + b.seed, b.y * 0.003 + simT * 0.00012) * TAU * 2;
+      ax += Math.cos(ta) * 42; ay += Math.sin(ta) * 42;
+
+      // the mark's ground stays clear: free birds part around it
+      const ldx = b.x - LX, ldy = b.y - LY;
+      const ld = Math.hypot(ldx, ldy) || 1;
+      if (ld < logoR) {
+        const f = (1 - ld / logoR) * 300;
+        ax += ldx / ld * f; ay += ldy / ld * f;
+      }
+
+      const fdx = b.x - px, fdy = b.y - py;
+      const fd2 = fdx * fdx + fdy * fdy;
+      if (fd2 < 120 * 120) {
+        const fd = Math.sqrt(fd2) || 1;
+        const f = (1 - fd / 120) * 900;
+        ax += fdx / fd * f; ay += fdy / fd * f;
+      }
+
+      for (const st of strikes) {
+        const r = st.t * 340;
+        const dx = b.x - st.x, dy = b.y - st.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (Math.abs(d - r) < 60) {
+          const f = (1 - Math.abs(d - r) / 60) * 1400 * (1 - st.t);
+          ax += dx / d * f; ay += dy / d * f;
+        }
+      }
+
+      const m = 70;
+      if (b.x < m) ax += (m - b.x) * 6;
+      if (b.x > W - m) ax -= (b.x - (W - m)) * 6;
+      if (b.y < m + 40) ay += (m + 40 - b.y) * 6;
+      if (b.y > H - m) ay -= (b.y - (H - m)) * 6;
+
+      b.vx += ax * s; b.vy += ay * s;
+      const sp = Math.hypot(b.vx, b.vy) || 1;
+      const want = 34 + 30 * vn(b.seed, simT * 0.0002);
+      const lim = Math.max(minV + want * 0.4, Math.min(maxV, sp));
+      b.vx = b.vx / sp * lim; b.vy = b.vy / sp * lim;
+      b.x += b.vx * s; b.y += b.vy * s;
+    }
+
+    // slot fill & consolidation eases — the fig05 pale→deep pattern
+    for (const sl of slots) {
+      if (sl.refillT > 0) sl.refillT -= dt;
+      const held = sl.bird && sl.bird.mode === 'held';
+      if (held) sl.f += (1 - sl.f) * (1 - Math.pow(0.004, dt / 1000));
+      else sl.f += (0 - sl.f) * (1 - Math.pow(0.0002, dt / 1000));
+      if (sl.f > 0.92) sl.con = Math.min(1, sl.con + dt / 1400);
+      else sl.con = Math.max(0, sl.con - dt / 300);
+    }
+
+    for (const st of strikes) st.t += dt / 900;
+    strikes = strikes.filter(st => st.t < 1);
+    for (const l of lines) l.t += dt / l.dur;
+    lines = lines.filter(l => l.t < 1);
+
+    // pale wake: cells light where the flock passes and fade behind it
+    const fade = Math.pow(0.5, dt / 170);
+    for (let k = 0; k < cellI.length; k++) cellI[k] *= fade;
+    for (const b of birds) {
+      if (b.mode === 'held') continue;
+      const i = b.x / G | 0, j = b.y / G | 0;
+      if (i < 0 || i >= cols || j < 0 || j >= rows) continue;
+      const k = j * cols + i;
+      if (cellI[k] < 0.06) { cellAX[k] = b.rax; cellAY[k] = b.ray; }
+      cellI[k] = Math.min(1, cellI[k] + dt / 110);
+    }
+  }
+
+  // ---------- rendering ----------
+  function draw(now) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // the flock's pale wake, quantized to the grid
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const k = j * cols + i;
+      const t = cellI[k];
+      if (t < 0.04) continue;
+      const e = 1 - Math.pow(1 - Math.min(1, t), 2);
+      const pad = G * SET.gap + (1 - e) * G * 0.2;
+      ctx.globalAlpha = Math.min(1, t * 1.1) * 0.9;
+      ctx.drawImage(atlasWake, cellAX[k] - 12, cellAY[k] - 12, 24, 24,
+                    i * G + pad, j * G + pad, G - pad * 2, G - pad * 2);
+    }
+    ctx.globalAlpha = 1;
+
+    // faint ink through-lines — structure forming
+    for (const l of lines) {
+      const a = Math.sin(Math.min(1, l.t * 1.15) * Math.PI);
+      ctx.strokeStyle = `rgba(26,23,18,${0.13 * a})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 0; k <= 16; k++) {
+        const [qx, qy] = quad(l, k / 16);
+        k ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy);
+      }
+      ctx.stroke();
+    }
+
+    // graduating birds: a deep pixel travelling its through-line
+    for (const b of birds) {
+      if (b.mode !== 'fly') continue;
+      const sz = Math.max(G * 0.55, L * 0.35);
+      ctx.drawImage(atlasDeep, b.rax - 12, b.ray - 12, 24, 24, b.x - sz/2, b.y - sz/2, sz, sz);
+    }
+
+    // the mark — never drawn as a guide; only where birds have settled.
+    // vivid watercolor blooms in, then deep ultramarine consolidates through.
+    for (const sl of slots) {
+      if (sl.f < 0.02) continue;
+      const breathe = 1 + 0.03 * Math.sin(now * 0.0022 + sl.ph);
+      const padL = L * Math.max(0.08, SET.gap * 0.7);
+      const sz = (L - padL) * (0.4 + 0.6 * sl.f) * breathe;
+      ctx.globalAlpha = Math.min(1, sl.f * 1.2);
+      ctx.drawImage(atlasVivid, sl.u - 12, sl.v - 12, 24, 24, sl.x - sz/2, sl.y - sz/2, sz, sz);
+      if (sl.con > 0.02) {
+        const ms = sz * (0.3 + 0.7 * (1 - Math.pow(1 - sl.con, 3)));
+        ctx.drawImage(atlasDeep, sl.du - 12, sl.dv - 12, 24, 24, sl.x - ms/2, sl.y - ms/2, ms, ms);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // strike rings
+    for (const st of strikes) {
+      ctx.globalAlpha = Math.sin(Math.min(1, st.t) * Math.PI) * 0.5;
+      ctx.strokeStyle = PINK;
+      const sq = G * (0.7 + st.t * 0.8);
+      ctx.strokeRect(st.x - sq/2, st.y - sq/2, sq, sq);
+      ctx.beginPath();
+      ctx.arc(st.x, st.y, st.t * 340, 0, TAU);
+      ctx.globalAlpha *= 0.35;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---------- interaction ----------
+  function disperseAt(x, y, radius, burst) {
+    for (const sl of slots) {
+      if (!sl.bird || sl.bird.mode !== 'held' || sl.f < 0.4) continue;
+      if (Math.hypot(sl.x - x, sl.y - y) < radius) release(sl, burst);
+    }
+  }
+  canvas.addEventListener('pointermove', e => {
+    const r = canvas.getBoundingClientRect();
+    px = e.clientX - r.left; py = e.clientY - r.top;
+    disperseAt(px, py, L * 1.7, false);
+    if (reduceMotion) { update(performance.now(), 16); draw(performance.now()); }
+  });
+  canvas.addEventListener('pointerleave', () => { px = -1e4; py = -1e4; });
+  canvas.addEventListener('pointerdown', e => {
+    const r = canvas.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    strikes.push({ x, y, t: 0 });
+    disperseAt(x, y, L * 3.2, true);
+  });
+
+  // ---------- settings & lifecycle ----------
+  function rebuild() {
+    G = Math.max(6, Math.round(Math.max(11, Math.round(W / 96)) * SET.size));
+    cols = Math.ceil(W / G); rows = Math.ceil(H / G);
+    cellI = new Float32Array(cols * rows);
+    cellAX = new Float32Array(cols * rows);
+    cellAY = new Float32Array(cols * rows);
+    layout();
+    N = Math.max(120, Math.min(2600, Math.round((W * H) / (G * G) / 5.5 * SET.density)));
+    while (birds.length < N) birds.push(makeBird());
+    if (birds.length > N) {
+      for (let i = N; i < birds.length; i++) {
+        const b = birds[i];
+        if (b.slot) { b.slot.bird = null; b.slot.con = 0; b.slot.refillT = 200; }
+      }
+      birds.length = N;
+    }
+    if (reduceMotion) {
+      for (const sl of slots) {
+        if (sl.bird) continue;
+        claim(sl);
+        if (sl.bird) { sl.bird.mode = 'held'; sl.bird.x = sl.x; sl.bird.y = sl.y; sl.f = 1; sl.con = 1; }
+      }
+      for (let i = 0; i < 240; i++) update(i * 16, 16);
+      draw(performance.now());
+    }
+  }
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    W = Math.max(320, r.width); H = Math.max(320, r.height);
+    dpr = Math.min(2, devicePixelRatio || 1);
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    birds = []; strikes = []; lines = [];
+    buildSlots();
+    reshuffleFlocks();
+    rebuild();
+  }
+
+  const $ = id => document.getElementById(id);
+  const panel = $('panel'), gear = $('gear');
+  gear.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    gear.setAttribute('aria-expanded', String(!panel.hidden));
+  });
+  const fmt = v => (Math.round(v * 100) / 100) + '×';
+  $('sDen').addEventListener('input', e => {
+    SET.density = +e.target.value; $('oDen').textContent = fmt(SET.density); rebuild();
+  });
+  $('sSiz').addEventListener('input', e => {
+    SET.size = +e.target.value; $('oSiz').textContent = fmt(SET.size); rebuild();
+  });
+  $('sSpd').addEventListener('input', e => {
+    SET.speed = +e.target.value; $('oSpd').textContent = fmt(SET.speed);
+  });
+  $('sGap').addEventListener('input', e => {
+    SET.gap = +e.target.value; $('oGap').textContent = Math.round(SET.gap * 100) + '%';
+    if (reduceMotion) draw(performance.now());
+  });
+  function setBg(c, sw) {
+    SET.bg = c;
+    document.body.style.background = c;
+    for (const b of document.querySelectorAll('.sw')) b.classList.toggle('on', b === sw);
+  }
+  for (const b of document.querySelectorAll('.sw')) {
+    b.addEventListener('click', () => { setBg(b.dataset.c, b); $('sBg').value = b.dataset.c; });
+  }
+  $('sBg').addEventListener('input', e => setBg(e.target.value, null));
+
+  resize();
+  addEventListener('resize', () => { clearTimeout(resize._t); resize._t = setTimeout(resize, 180); });
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(50, now - last); last = now;
+    if (W) { update(now, dt * SET.speed); draw(now); }
+    requestAnimationFrame(frame);
+  }
+  if (!reduceMotion) requestAnimationFrame(frame);
+})();
+</script>
