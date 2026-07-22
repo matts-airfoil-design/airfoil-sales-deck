@@ -12,68 +12,93 @@
   .ui { position: absolute; inset: 0; pointer-events: none; }
   .ui a { pointer-events: auto; color: inherit; }
 
-  .brand {
-    position: absolute; top: 36px; left: 40px;
-    display: flex; align-items: center; gap: 8px; color: #111;
+  .gear {
+    position: absolute; top: 18px; right: 20px;
+    width: 36px; height: 36px;
+    pointer-events: auto;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(120,117,108,0.45);
+    border-radius: 50%;
+    background: rgba(255,255,255,0.78);
+    backdrop-filter: blur(5px);
+    color: #55524b;
+    cursor: pointer;
+    transition: transform 0.25s;
   }
-  .brand canvas { display: block; }
-  .brand .word { font-size: 24px; font-weight: 600; letter-spacing: 0.01em; line-height: 1; }
+  .gear:hover { transform: rotate(40deg); }
+  .gear:focus-visible { outline: 2px solid #3e7bd6; outline-offset: 2px; }
 
-  .connect {
-    position: absolute; top: 40px; right: 44px;
-    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
-    font-size: 16px; color: #1c1c1c;
+  .panel {
+    position: absolute; top: 62px; right: 20px;
+    width: 232px;
+    pointer-events: auto;
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(120,117,108,0.35);
+    border-radius: 6px;
+    padding: 16px 16px 14px;
+    color: #3c3a34;
   }
-  .connect a { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
-
-  .lede { position: absolute; left: 40px; bottom: 42px; max-width: 340px; }
-  .lede h1 {
-    margin: 0 0 8px;
-    font-size: 27px; font-weight: 700;
-    letter-spacing: -0.01em; line-height: 1.15;
-    white-space: nowrap;
-    background-clip: text; -webkit-background-clip: text;
-    color: transparent;
-    transition: background-image 0.5s;
+  .panel .field { display: block; margin-bottom: 13px; }
+  .panel .lab {
+    display: flex; justify-content: space-between; align-items: baseline;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    font-size: 10.5px; color: #6e6a60;
   }
-  .lede h1.va { background-image: linear-gradient(90deg, #e0338a 0%, #c239c6 45%, #cb3fd1 70%, #e793d8 100%); }
-  .lede h1.vb { background-image: linear-gradient(90deg, #14957f 0%, #2fa864 55%, #58bd6e 80%, #9ed69a 100%); }
-  .lede p {
-    margin: 0;
-    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
-    font-size: 17.5px; line-height: 1.5; color: #6e6a60;
+  .panel .lab output { font-variant-numeric: tabular-nums; color: #3c3a34; letter-spacing: 0; font-size: 11px; }
+  .panel input[type="range"] {
+    display: block; width: 100%; margin: 7px 0 0;
+    accent-color: #3e7bd6;
   }
-  .lede p a { color: #1c1c1c; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
-
-  .nav {
-    position: absolute; right: 44px; bottom: 44px;
-    display: flex; gap: 56px;
-    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
-    font-size: 15.5px; color: #1c1c1c;
+  .panel input[type="range"]:focus-visible { outline: 2px solid #3e7bd6; outline-offset: 2px; }
+  .panel .swrow { display: flex; align-items: center; gap: 7px; margin-top: 7px; }
+  .panel .sw {
+    width: 23px; height: 23px; padding: 0;
+    border: 1px solid rgba(120,117,108,0.5);
+    border-radius: 4px; cursor: pointer;
   }
-  .nav a { text-decoration: none; display: flex; align-items: center; gap: 9px; }
-  .nav a:hover { text-decoration: underline; text-underline-offset: 3px; }
-  .nav .sq { width: 7px; height: 7px; border: 1px solid #8a857b; display: inline-block; }
-
-  @media (max-width: 900px) {
-    .lede h1 { white-space: normal; font-size: 24px; }
-    .nav { gap: 26px; }
+  .panel .sw.on { outline: 2px solid #3e7bd6; outline-offset: 1px; }
+  .panel .sw:focus-visible { outline: 2px solid #3e7bd6; outline-offset: 1px; }
+  .panel input[type="color"] {
+    width: 30px; height: 25px; padding: 0; margin-left: auto;
+    border: 1px solid rgba(120,117,108,0.5); border-radius: 4px;
+    background: none; cursor: pointer;
   }
 </style>
 
 <div class="stage" id="stage">
   <canvas id="sim"></canvas>
   <div class="ui">
-    <div class="brand"><canvas id="mark" width="26" height="26"></canvas><span class="word">fig</span></div>
-    <div class="connect"><a href="#">connect &rarr;</a></div>
-    <div class="lede">
-      <h1 id="headline" class="va">life-like intelligence</h1>
-      <p>writing extended memory. computing extended calculation. fig is extending agency itself.&ensp;<a href="#">explore research &rarr;</a></p>
-    </div>
-    <div class="nav">
-      <a href="#"><span class="sq"></span>research</a>
-      <a href="#"><span class="sq"></span>blog</a>
-      <a href="#"><span class="sq"></span>contact</a>
+    <button class="gear" id="gear" aria-label="Settings" aria-expanded="false">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.2"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+    <div class="panel" id="panel" hidden>
+      <label class="field">
+        <span class="lab">pixel density <output id="oDen">1.0&times;</output></span>
+        <input id="sDen" type="range" min="0.3" max="2" step="0.05" value="1">
+      </label>
+      <label class="field">
+        <span class="lab">animation speed <output id="oSpd">1.0&times;</output></span>
+        <input id="sSpd" type="range" min="0.25" max="2.5" step="0.05" value="1">
+      </label>
+      <label class="field">
+        <span class="lab">pixel size <output id="oSiz">1.0&times;</output></span>
+        <input id="sSiz" type="range" min="0.5" max="2.4" step="0.05" value="1">
+      </label>
+      <div class="field" style="margin-bottom:2px">
+        <span class="lab">background</span>
+        <div class="swrow" id="swrow">
+          <button class="sw on" data-c="#ecece9" style="background:#ecece9" aria-label="Paper"></button>
+          <button class="sw" data-c="#f4efe6" style="background:#f4efe6" aria-label="Cream"></button>
+          <button class="sw" data-c="#dfe5e0" style="background:#dfe5e0" aria-label="Sage"></button>
+          <button class="sw" data-c="#1a1a1e" style="background:#1a1a1e" aria-label="Ink"></button>
+          <button class="sw" data-c="#161d33" style="background:#161d33" aria-label="Night"></button>
+          <input type="color" id="sBg" value="#ecece9" aria-label="Custom background color">
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -96,19 +121,6 @@
   const ctx = canvas.getContext('2d');
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const rnd = (a, b) => a + Math.random() * (b - a);
-
-  const LOGO = [[6,5],[5,6],[6,6],[6,7],[4,3],[3,4],[3,7],[4,8],[7,8],[8,7],[8,4],[7,3],[6,2],[2,5],[9,5],[6,9],[4,1],[1,4],[1,7],[4,10],[7,10],[10,7],[10,4],[7,1],[2,2],[2,9],[9,9],[9,2],[3,1],[1,3],[1,8],[3,10],[8,10],[10,8],[10,3],[8,1],[11,6],[11,5],[5,0],[0,5],[0,6],[5,11],[6,11],[6,0]];
-  (() => {
-    const m = document.getElementById('mark');
-    const g = m.getContext('2d');
-    const dp = Math.min(2, devicePixelRatio || 1);
-    m.width = m.height = 26 * dp;
-    m.style.width = m.style.height = '26px';
-    g.setTransform(dp, 0, 0, dp, 0, 0);
-    g.fillStyle = '#3e7bd6';
-    const u = 26 / 12;
-    for (const [i, j] of LOGO) g.fillRect(i * u + 0.3, j * u + 0.3, u - 0.6, u - 0.6);
-  })();
 
   const NP = new Uint8Array(512);
   for (let i = 0; i < 512; i++) NP[i] = Math.random() * 256 | 0;
@@ -169,12 +181,14 @@
   let simT = 0;
   let N = 640;
 
+  // user settings: density & size rebuild the grid/flock, speed scales time
+  const SET = { density: 1, speed: 1, size: 1, bg: '#ecece9' };
+
   // ---------- flock cores: wandering centers the cloud gathers around ----------
   const MAXK = 3;
   let activeK = 2;                 // how many flocks are alive right now
   let phase = 'roam';              // roam | converge
   let phaseT = 0, phaseDur = 14000;
-  let headlineCls = 'va';
   const coreSwirl = [1, -1, 1];    // rotation sense per flock
 
   function corePos(k, t) {
@@ -206,8 +220,6 @@
         b.vx += Math.cos(ang) * rnd(40, 140);
         b.vy += Math.sin(ang) * rnd(40, 140);
       }
-      headlineCls = headlineCls === 'va' ? 'vb' : 'va';
-      document.getElementById('headline').className = headlineCls;
     }
   }
 
@@ -254,7 +266,6 @@
     const s = dt / 1000;
     const maxV = phase === 'converge' ? 185 : 150;
     const minV = 55;
-    const ledeX = W * 0.34, ledeY = H * 0.62;    // keep the lede readable
 
     for (const b of birds) {
       let ax = 0, ay = 0;
@@ -333,10 +344,6 @@
       if (b.x > W - m) ax -= (b.x - (W - m)) * 6;
       if (b.y < m + 40) ay += (m + 40 - b.y) * 6;
       if (b.y > H - m) ay -= (b.y - (H - m)) * 6;
-      if (b.x < ledeX && b.y > ledeY) {
-        ax += (ledeX - b.x) * 1.6;
-        ay -= (b.y - ledeY) * 1.6;
-      }
 
       b.vx += ax * s; b.vy += ay * s;
 
@@ -410,20 +417,16 @@
     strikes.push({ x: e.clientX - r.left, y: e.clientY - r.top, t: 0 });
   });
 
-  function resize() {
-    const r = stage.getBoundingClientRect();
-    W = Math.max(320, r.width); H = Math.max(320, r.height);
-    dpr = Math.min(2, devicePixelRatio || 1);
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    G = Math.max(11, Math.round(W / 96));
+  // rebuild the grid and flock for the current settings, keeping the sim going
+  function rebuild() {
+    G = Math.max(6, Math.round(Math.max(11, Math.round(W / 96)) * SET.size));
     cols = Math.ceil(W / G); rows = Math.ceil(H / G);
     cellI = new Float32Array(cols * rows);
     cellAX = new Float32Array(cols * rows);
     cellAY = new Float32Array(cols * rows);
-    N = Math.min(1200, Math.round((W * H) / (G * G) / 5.5));
-    birds = Array.from({ length: N }, makeBird);
-    strikes = [];
-    setPhase('roam');
+    N = Math.max(120, Math.min(2600, Math.round((W * H) / (G * G) / 5.5 * SET.density)));
+    while (birds.length < N) birds.push(makeBird());
+    if (birds.length > N) birds.length = N;
     if (reduceMotion) {
       // settle the flock into a believable still, then draw once
       for (let i = 0; i < 240; i++) update(i * 16, 16);
@@ -431,13 +434,50 @@
     }
   }
 
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    W = Math.max(320, r.width); H = Math.max(320, r.height);
+    dpr = Math.min(2, devicePixelRatio || 1);
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    birds = []; strikes = [];
+    setPhase('roam');
+    rebuild();
+  }
+
+  // ---------- settings panel ----------
+  const $ = id => document.getElementById(id);
+  const panel = $('panel'), gear = $('gear');
+  gear.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    gear.setAttribute('aria-expanded', String(!panel.hidden));
+  });
+  const fmt = v => (Math.round(v * 100) / 100) + '×';
+  $('sDen').addEventListener('input', e => {
+    SET.density = +e.target.value; $('oDen').textContent = fmt(SET.density); rebuild();
+  });
+  $('sSiz').addEventListener('input', e => {
+    SET.size = +e.target.value; $('oSiz').textContent = fmt(SET.size); rebuild();
+  });
+  $('sSpd').addEventListener('input', e => {
+    SET.speed = +e.target.value; $('oSpd').textContent = fmt(SET.speed);
+  });
+  function setBg(c, sw) {
+    SET.bg = c;
+    document.body.style.background = c;
+    for (const b of document.querySelectorAll('.sw')) b.classList.toggle('on', b === sw);
+  }
+  for (const b of document.querySelectorAll('.sw')) {
+    b.addEventListener('click', () => { setBg(b.dataset.c, b); $('sBg').value = b.dataset.c; });
+  }
+  $('sBg').addEventListener('input', e => setBg(e.target.value, null));
+
   resize();
   addEventListener('resize', () => { clearTimeout(resize._t); resize._t = setTimeout(resize, 180); });
 
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(50, now - last); last = now;
-    if (W) { update(now, dt); draw(now); }
+    if (W) { update(now, dt * SET.speed); draw(now); }
     requestAnimationFrame(frame);
   }
   if (!reduceMotion) requestAnimationFrame(frame);
