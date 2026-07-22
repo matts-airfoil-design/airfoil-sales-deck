@@ -1,0 +1,462 @@
+<title>fig — murmuration</title>
+<style>
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #ecece9;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  .stage { position: fixed; inset: 0; }
+  canvas#sim { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .ui { position: absolute; inset: 0; pointer-events: none; }
+  .ui a { pointer-events: auto; color: inherit; }
+
+  .brand {
+    position: absolute; top: 36px; left: 40px;
+    display: flex; align-items: center; gap: 8px; color: #111;
+  }
+  .brand canvas { display: block; }
+  .brand .word { font-size: 24px; font-weight: 600; letter-spacing: 0.01em; line-height: 1; }
+
+  .connect {
+    position: absolute; top: 40px; right: 44px;
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 16px; color: #1c1c1c;
+  }
+  .connect a { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+
+  .lede { position: absolute; left: 40px; bottom: 42px; max-width: 340px; }
+  .lede h1 {
+    margin: 0 0 8px;
+    font-size: 27px; font-weight: 700;
+    letter-spacing: -0.01em; line-height: 1.15;
+    white-space: nowrap;
+    background-clip: text; -webkit-background-clip: text;
+    color: transparent;
+    transition: background-image 0.5s;
+  }
+  .lede h1.va { background-image: linear-gradient(90deg, #e0338a 0%, #c239c6 45%, #cb3fd1 70%, #e793d8 100%); }
+  .lede h1.vb { background-image: linear-gradient(90deg, #14957f 0%, #2fa864 55%, #58bd6e 80%, #9ed69a 100%); }
+  .lede p {
+    margin: 0;
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 17.5px; line-height: 1.5; color: #6e6a60;
+  }
+  .lede p a { color: #1c1c1c; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+
+  .nav {
+    position: absolute; right: 44px; bottom: 44px;
+    display: flex; gap: 56px;
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 15.5px; color: #1c1c1c;
+  }
+  .nav a { text-decoration: none; display: flex; align-items: center; gap: 9px; }
+  .nav a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .nav .sq { width: 7px; height: 7px; border: 1px solid #8a857b; display: inline-block; }
+
+  @media (max-width: 900px) {
+    .lede h1 { white-space: normal; font-size: 24px; }
+    .nav { gap: 26px; }
+  }
+</style>
+
+<div class="stage" id="stage">
+  <canvas id="sim"></canvas>
+  <div class="ui">
+    <div class="brand"><canvas id="mark" width="26" height="26"></canvas><span class="word">fig</span></div>
+    <div class="connect"><a href="#">connect &rarr;</a></div>
+    <div class="lede">
+      <h1 id="headline" class="va">life-like intelligence</h1>
+      <p>writing extended memory. computing extended calculation. fig is extending agency itself.&ensp;<a href="#">explore research &rarr;</a></p>
+    </div>
+    <div class="nav">
+      <a href="#"><span class="sq"></span>research</a>
+      <a href="#"><span class="sq"></span>blog</a>
+      <a href="#"><span class="sq"></span>contact</a>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  // a murmuration of small watercolor pixels: hundreds of birds flock with
+  // alignment, cohesion and separation, gathered around wandering cores that
+  // drift like a starling cloud — stretching, folding, splitting into lobes
+  // and re-merging. every so often the whole population converges into one
+  // dense mass, then bursts apart into new flocks and new patterns.
+  // the pointer is a falcon: birds bulge and part around it.
+  // click anywhere for a strike — a shockwave that scatters the cloud.
+  const TAU = Math.PI * 2;
+  const canvas = document.getElementById('sim');
+  const stage = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  const LOGO = [[6,5],[5,6],[6,6],[6,7],[4,3],[3,4],[3,7],[4,8],[7,8],[8,7],[8,4],[7,3],[6,2],[2,5],[9,5],[6,9],[4,1],[1,4],[1,7],[4,10],[7,10],[10,7],[10,4],[7,1],[2,2],[2,9],[9,9],[9,2],[3,1],[1,3],[1,8],[3,10],[8,10],[10,8],[10,3],[8,1],[11,6],[11,5],[5,0],[0,5],[0,6],[5,11],[6,11],[6,0]];
+  (() => {
+    const m = document.getElementById('mark');
+    const g = m.getContext('2d');
+    const dp = Math.min(2, devicePixelRatio || 1);
+    m.width = m.height = 26 * dp;
+    m.style.width = m.style.height = '26px';
+    g.setTransform(dp, 0, 0, dp, 0, 0);
+    g.fillStyle = '#3e7bd6';
+    const u = 26 / 12;
+    for (const [i, j] of LOGO) g.fillRect(i * u + 0.3, j * u + 0.3, u - 0.6, u - 0.6);
+  })();
+
+  const NP = new Uint8Array(512);
+  for (let i = 0; i < 512; i++) NP[i] = Math.random() * 256 | 0;
+  function vn(x, y) {
+    const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255;
+    const xf = x - Math.floor(x), yf = y - Math.floor(y);
+    const h = (i, j) => NP[(NP[(xi + i) & 255] + yi + j) & 255] / 255;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    return h(0,0)*(1-u)*(1-v) + h(1,0)*u*(1-v) + h(0,1)*(1-u)*v + h(1,1)*u*v;
+  }
+
+  // the birds wear fig-05's multicolor watercolor
+  const ATLAS = 768;
+  const atlas = document.createElement('canvas');
+  atlas.width = atlas.height = ATLAS;
+  (() => {
+    const a = atlas.getContext('2d');
+    a.fillStyle = '#f4efe6';
+    a.fillRect(0, 0, ATLAS, ATLAS);
+    const hues = [
+      [75,143,217],[67,179,160],[76,175,99],[168,201,75],
+      [240,138,60],[236,109,155],[139,107,217],
+    ];
+    for (let i = 0; i < 880; i++) {
+      const [r, g, b] = hues[Math.random() * hues.length | 0];
+      const x = rnd(0, ATLAS), y = rnd(0, ATLAS), rad = rnd(11, 44);
+      const grad = a.createRadialGradient(x, y, 0, x, y, rad);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${rnd(0.55, 0.9)})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      a.fillStyle = grad;
+      a.beginPath(); a.arc(x, y, rad, 0, TAU); a.fill();
+    }
+    for (let i = 0; i < 6000; i++) {
+      a.fillStyle = `rgba(30,26,20,${rnd(0.02, 0.06)})`;
+      a.fillRect(rnd(0, ATLAS), rnd(0, ATLAS), 1.3, 1.3);
+    }
+  })();
+  // crop centers biased toward pigment, so small chips stay vivid
+  const CROPS = [];
+  (() => {
+    const id = atlas.getContext('2d').getImageData(0, 0, ATLAS, ATLAS).data;
+    let tries = 0;
+    while (CROPS.length < 1600 && tries++ < 24000) {
+      const x = 20 + Math.random() * (ATLAS - 40) | 0, y = 20 + Math.random() * (ATLAS - 40) | 0;
+      const i = (y * ATLAS + x) * 4;
+      const dr = id[i] - 244, dg = id[i + 1] - 239, db = id[i + 2] - 230;
+      if (dr * dr + dg * dg + db * db > 2600) CROPS.push([x, y]);
+    }
+    if (!CROPS.length) CROPS.push([ATLAS / 2, ATLAS / 2]);
+  })();
+
+  let W = 0, H = 0, dpr = 1, G = 15;
+  let birds = [], strikes = [];
+  let simT = 0;
+  let N = 640;
+
+  // ---------- flock cores: wandering centers the cloud gathers around ----------
+  const MAXK = 3;
+  let activeK = 2;                 // how many flocks are alive right now
+  let phase = 'roam';              // roam | converge
+  let phaseT = 0, phaseDur = 14000;
+  let headlineCls = 'va';
+  const coreSwirl = [1, -1, 1];    // rotation sense per flock
+
+  function corePos(k, t) {
+    // converge folds every core onto core 0
+    const kk = phase === 'converge' ? 0 : k;
+    return [
+      W * (0.2 + 0.6 * vn(t * 0.000026 + kk * 17.3, kk * 9.1 + 3.7)),
+      H * (0.14 + 0.52 * vn(t * 0.000023 + kk * 7.7, kk * 13.9 + 40)),
+    ];
+  }
+  function coreVel(k, t) {
+    const [x0, y0] = corePos(k, t - 400);
+    const [x1, y1] = corePos(k, t + 400);
+    return [(x1 - x0) / 0.8, (y1 - y0) / 0.8];   // px/s
+  }
+
+  function setPhase(p) {
+    phase = p; phaseT = 0;
+    if (p === 'converge') {
+      phaseDur = rnd(6000, 9500);
+    } else {
+      phaseDur = rnd(12000, 22000);
+      activeK = 1 + (Math.random() * MAXK | 0);          // 1..3 flocks
+      for (let k = 0; k < MAXK; k++) coreSwirl[k] = Math.random() < 0.5 ? 1 : -1;
+      for (const b of birds) {
+        b.flock = Math.random() * activeK | 0;
+        // burst outward so the mass visibly breaks apart into the new flocks
+        const ang = rnd(0, TAU);
+        b.vx += Math.cos(ang) * rnd(40, 140);
+        b.vy += Math.sin(ang) * rnd(40, 140);
+      }
+      headlineCls = headlineCls === 'va' ? 'vb' : 'va';
+      document.getElementById('headline').className = headlineCls;
+    }
+  }
+
+  // ---------- birds ----------
+  function makeBird() {
+    const k = Math.random() * activeK | 0;
+    const [cx, cy] = corePos(k, 0);
+    const ang = rnd(0, TAU), r = rnd(0, 160);
+    const [rax, ray] = CROPS[Math.random() * CROPS.length | 0];
+    return {
+      x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r,
+      vx: rnd(-80, 80), vy: rnd(-80, 80),
+      flock: k,
+      rax, ray,
+      seed: rnd(0, 100), ph: rnd(0, TAU),
+    };
+  }
+
+  let px = -1e4, py = -1e4;
+
+  // ---------- update ----------
+  const cores = [[0,0],[0,0],[0,0]], cvels = [[0,0],[0,0],[0,0]];
+  function update(now, dt) {
+    simT += dt;
+    phaseT += dt;
+    if (phaseT > phaseDur) setPhase(phase === 'roam' ? 'converge' : 'roam');
+
+    const K = phase === 'converge' ? 1 : activeK;
+    for (let k = 0; k < MAXK; k++) {
+      const kk = Math.min(k, K - 1);
+      cores[k] = corePos(kk, simT);
+      cvels[k] = coreVel(kk, simT);
+    }
+
+    // spatial hash for neighbor queries
+    const CS = 46;
+    const bucket = new Map();
+    for (const b of birds) {
+      const key = (b.x / CS | 0) * 4096 + (b.y / CS | 0);
+      const cell = bucket.get(key);
+      if (cell) cell.push(b); else bucket.set(key, [b]);
+    }
+
+    const s = dt / 1000;
+    const maxV = phase === 'converge' ? 185 : 150;
+    const minV = 55;
+    const ledeX = W * 0.34, ledeY = H * 0.62;    // keep the lede readable
+
+    for (const b of birds) {
+      let ax = 0, ay = 0;
+
+      // --- boids: separation / alignment / cohesion among neighbors ---
+      const bi = b.x / CS | 0, bj = b.y / CS | 0;
+      let n = 0, avx = 0, avy = 0, cx = 0, cy = 0;
+      let sepx = 0, sepy = 0;
+      for (let dj = -1; dj <= 1 && n < 14; dj++) for (let di = -1; di <= 1 && n < 14; di++) {
+        const cell = bucket.get((bi + di) * 4096 + (bj + dj));
+        if (!cell) continue;
+        for (const o of cell) {
+          if (o === b) continue;
+          const dx = o.x - b.x, dy = o.y - b.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > CS * CS) continue;
+          const d = Math.sqrt(d2) || 1;
+          if (d < 15) { sepx -= dx / d * (15 - d); sepy -= dy / d * (15 - d); }
+          avx += o.vx; avy += o.vy; cx += o.x; cy += o.y;
+          if (++n >= 14) break;
+        }
+      }
+      if (n) {
+        ax += (avx / n - b.vx) * 2.4;                    // alignment
+        ay += (avy / n - b.vy) * 2.4;
+        ax += (cx / n - b.x) * 1.5;                      // cohesion
+        ay += (cy / n - b.y) * 1.5;
+      }
+      ax += sepx * 34; ay += sepy * 34;                  // separation
+
+      // --- gathering around the wandering core, stretched along its travel ---
+      const co = cores[b.flock], cv = cvels[b.flock];
+      let gx = co[0] - b.x, gy = co[1] - b.y;
+      const cs2 = Math.hypot(cv[0], cv[1]);
+      if (cs2 > 1) {
+        const ux = cv[0] / cs2, uy = cv[1] / cs2;
+        const par = gx * ux + gy * uy;                   // along-travel component
+        gx -= ux * par * 0.55; gy -= uy * par * 0.55;    // weaker → cloud elongates
+      }
+      const gd = Math.hypot(gx, gy) || 1;
+      const tight = phase === 'converge' ? 1.9 : 1.15;
+      const soft = phase === 'converge' ? 95 : 45;
+      const pull = Math.min(220, Math.max(0, gd - soft) * tight);
+      ax += gx / gd * pull; ay += gy / gd * pull;
+      // tangential swirl — the folding, rolling motion of the mass
+      const sw = coreSwirl[b.flock] * (phase === 'converge' ? 46 : 30);
+      ax += -gy / gd * sw; ay += gx / gd * sw;
+
+      // --- turbulence ---
+      const ta = vn(b.x * 0.003 + b.seed, b.y * 0.003 + simT * 0.00012) * TAU * 2;
+      ax += Math.cos(ta) * 42; ay += Math.sin(ta) * 42;
+
+      // --- falcon (pointer) ---
+      const fdx = b.x - px, fdy = b.y - py;
+      const fd2 = fdx * fdx + fdy * fdy;
+      if (fd2 < 120 * 120) {
+        const fd = Math.sqrt(fd2) || 1;
+        const f = (1 - fd / 120) * 900;
+        ax += fdx / fd * f; ay += fdy / fd * f;
+      }
+
+      // --- strikes: expanding shockwaves ---
+      for (const st of strikes) {
+        const r = st.t * 340;
+        const dx = b.x - st.x, dy = b.y - st.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (Math.abs(d - r) < 60) {
+          const f = (1 - Math.abs(d - r) / 60) * 1400 * (1 - st.t);
+          ax += dx / d * f; ay += dy / d * f;
+        }
+      }
+
+      // --- soft screen bounds & lede avoidance ---
+      const m = 70;
+      if (b.x < m) ax += (m - b.x) * 6;
+      if (b.x > W - m) ax -= (b.x - (W - m)) * 6;
+      if (b.y < m + 40) ay += (m + 40 - b.y) * 6;
+      if (b.y > H - m) ay -= (b.y - (H - m)) * 6;
+      if (b.x < ledeX && b.y > ledeY) {
+        ax += (ledeX - b.x) * 1.6;
+        ay -= (b.y - ledeY) * 1.6;
+      }
+
+      b.vx += ax * s; b.vy += ay * s;
+
+      // speed clamp keeps everything bird-like
+      const sp = Math.hypot(b.vx, b.vy) || 1;
+      const want = 34 + 30 * vn(b.seed, simT * 0.0002);
+      const lim = Math.max(minV + want * 0.4, Math.min(maxV, sp));
+      b.vx = b.vx / sp * lim; b.vy = b.vy / sp * lim;
+
+      b.x += b.vx * s; b.y += b.vy * s;
+    }
+
+    for (const st of strikes) st.t += dt / 900;
+    strikes = strikes.filter(st => st.t < 1);
+  }
+
+  // ---------- rendering ----------
+  function draw(now) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const cols = Math.ceil(W / G), rows = Math.ceil(H / G);
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(60,60,54,0.06)';
+    ctx.beginPath();
+    for (let i = 0; i <= cols; i++) { const x = (i * G | 0) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let j = 0; j <= rows; j++) { const y = (j * G | 0) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
+
+    // faint tissue between close neighbors — the cloud's inner weave
+    const BS = 72;
+    const bucket = new Map();
+    for (const b of birds) {
+      const key = (b.x / BS | 0) * 4096 + (b.y / BS | 0);
+      const cell = bucket.get(key);
+      if (cell) cell.push(b); else bucket.set(key, [b]);
+    }
+    ctx.strokeStyle = 'rgba(28,28,28,0.055)';
+    ctx.beginPath();
+    let segs = 0;
+    for (const b of birds) {
+      if (segs > 360) break;
+      const bi = b.x / BS | 0, bj = b.y / BS | 0;
+      let n1 = null, d1 = 46 * 46;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const cell = bucket.get((bi + di) * 4096 + (bj + dj));
+        if (!cell) continue;
+        for (const o of cell) {
+          if (o === b || o._id <= b._id) continue;
+          const d = (b.x - o.x) ** 2 + (b.y - o.y) ** 2;
+          if (d < d1) { d1 = d; n1 = o; }
+        }
+      }
+      if (n1) { ctx.moveTo(b.x, b.y); ctx.lineTo(n1.x, n1.y); segs++; }
+    }
+    ctx.stroke();
+
+    // birds: watercolor chips oriented along flight
+    const swA = 26, shA = 26;
+    for (const b of birds) {
+      const sz = G * 0.42 * (1 + 0.08 * Math.sin(now * 0.004 + b.ph));
+      const ang = Math.atan2(b.vy, b.vx);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(ang);
+      ctx.globalAlpha = 0.92;
+      ctx.drawImage(atlas, b.rax - swA/2, b.ray - shA/2, swA, shA, -sz * 0.8, -sz * 0.42, sz * 1.6, sz * 0.84);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    // strike rings
+    for (const st of strikes) {
+      ctx.globalAlpha = Math.sin(Math.min(1, st.t) * Math.PI) * 0.5;
+      ctx.strokeStyle = 'rgb(236,109,155)';
+      const s = G * (0.7 + st.t * 0.8);
+      ctx.strokeRect(st.x - s/2, st.y - s/2, s, s);
+      ctx.beginPath();
+      ctx.arc(st.x, st.y, st.t * 340, 0, TAU);
+      ctx.globalAlpha *= 0.35;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---------- interaction ----------
+  canvas.addEventListener('pointermove', e => {
+    const r = canvas.getBoundingClientRect();
+    px = e.clientX - r.left; py = e.clientY - r.top;
+  });
+  canvas.addEventListener('pointerleave', () => { px = -1e4; py = -1e4; });
+  canvas.addEventListener('pointerdown', e => {
+    const r = canvas.getBoundingClientRect();
+    strikes.push({ x: e.clientX - r.left, y: e.clientY - r.top, t: 0 });
+  });
+
+  let nextId = 1;
+  function tagIds() { for (const b of birds) if (!b._id) b._id = nextId++; }
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    W = Math.max(320, r.width); H = Math.max(320, r.height);
+    dpr = Math.min(2, devicePixelRatio || 1);
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    G = Math.max(11, Math.round(W / 96));
+    N = Math.min(1200, Math.round((W * H) / (G * G) / 5.5));
+    birds = Array.from({ length: N }, makeBird);
+    tagIds();
+    strikes = [];
+    setPhase('roam');
+    if (reduceMotion) {
+      // settle the flock into a believable still, then draw once
+      for (let i = 0; i < 240; i++) update(i * 16, 16);
+      draw(performance.now());
+    }
+  }
+
+  resize();
+  addEventListener('resize', () => { clearTimeout(resize._t); resize._t = setTimeout(resize, 180); });
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(50, now - last); last = now;
+    if (W) { update(now, dt); draw(now); }
+    requestAnimationFrame(frame);
+  }
+  if (!reduceMotion) requestAnimationFrame(frame);
+})();
+</script>
