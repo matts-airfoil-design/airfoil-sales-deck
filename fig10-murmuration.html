@@ -81,13 +81,15 @@
 <script>
 (() => {
   'use strict';
-  // a murmuration of small watercolor pixels: hundreds of birds flock with
+  // a murmuration quantized to the page grid: hundreds of birds flock with
   // alignment, cohesion and separation, gathered around wandering cores that
   // drift like a starling cloud — stretching, folding, splitting into lobes
-  // and re-merging. every so often the whole population converges into one
-  // dense mass, then bursts apart into new flocks and new patterns.
-  // the pointer is a falcon: birds bulge and part around it.
-  // click anywhere for a strike — a shockwave that scatters the cloud.
+  // and re-merging. the birds themselves are invisible; each grid cell a bird
+  // passes through lights up as a watercolor square and fades behind it, so
+  // the cloud reads as ever-changing patterns of pixels inside the grid.
+  // every so often the whole population converges into one dense mass, then
+  // bursts apart into new flocks. the pointer is a falcon: the cloud bulges
+  // and parts around it. click anywhere for a strike — a scattering shockwave.
   const TAU = Math.PI * 2;
   const canvas = document.getElementById('sim');
   const stage = document.getElementById('stage');
@@ -159,6 +161,10 @@
   })();
 
   let W = 0, H = 0, dpr = 1, G = 15;
+  let cols = 0, rows = 0;
+  let cellI = new Float32Array(0);      // per-cell brightness
+  let cellAX = new Float32Array(0);     // per-cell watercolor crop
+  let cellAY = new Float32Array(0);
   let birds = [], strikes = [];
   let simT = 0;
   let N = 640;
@@ -345,60 +351,37 @@
 
     for (const st of strikes) st.t += dt / 900;
     strikes = strikes.filter(st => st.t < 1);
+
+    // deposit the flock into the grid: cells light where birds are and
+    // fade shortly after they leave, leaving a quantized wake
+    const fade = Math.pow(0.5, dt / 150);
+    for (let k = 0; k < cellI.length; k++) cellI[k] *= fade;
+    for (const b of birds) {
+      const i = b.x / G | 0, j = b.y / G | 0;
+      if (i < 0 || i >= cols || j < 0 || j >= rows) continue;
+      const k = j * cols + i;
+      if (cellI[k] < 0.06) { cellAX[k] = b.rax; cellAY[k] = b.ray; }
+      cellI[k] = Math.min(1, cellI[k] + dt / 110);
+    }
   }
 
   // ---------- rendering ----------
   function draw(now) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const cols = Math.ceil(W / G), rows = Math.ceil(H / G);
 
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(60,60,54,0.06)';
-    ctx.beginPath();
-    for (let i = 0; i <= cols; i++) { const x = (i * G | 0) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-    for (let j = 0; j <= rows; j++) { const y = (j * G | 0) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
-    ctx.stroke();
-
-    // faint tissue between close neighbors — the cloud's inner weave
-    const BS = 72;
-    const bucket = new Map();
-    for (const b of birds) {
-      const key = (b.x / BS | 0) * 4096 + (b.y / BS | 0);
-      const cell = bucket.get(key);
-      if (cell) cell.push(b); else bucket.set(key, [b]);
-    }
-    ctx.strokeStyle = 'rgba(28,28,28,0.055)';
-    ctx.beginPath();
-    let segs = 0;
-    for (const b of birds) {
-      if (segs > 360) break;
-      const bi = b.x / BS | 0, bj = b.y / BS | 0;
-      let n1 = null, d1 = 46 * 46;
-      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-        const cell = bucket.get((bi + di) * 4096 + (bj + dj));
-        if (!cell) continue;
-        for (const o of cell) {
-          if (o === b || o._id <= b._id) continue;
-          const d = (b.x - o.x) ** 2 + (b.y - o.y) ** 2;
-          if (d < d1) { d1 = d; n1 = o; }
-        }
-      }
-      if (n1) { ctx.moveTo(b.x, b.y); ctx.lineTo(n1.x, n1.y); segs++; }
-    }
-    ctx.stroke();
-
-    // birds: watercolor chips oriented along flight
+    // the flock, quantized: each lit cell is a square watercolor pixel
+    // snapped to the grid, easing in as a bird arrives and fading behind it
     const swA = 26, shA = 26;
-    for (const b of birds) {
-      const sz = G * 0.42 * (1 + 0.08 * Math.sin(now * 0.004 + b.ph));
-      const ang = Math.atan2(b.vy, b.vx);
-      ctx.save();
-      ctx.translate(b.x, b.y);
-      ctx.rotate(ang);
-      ctx.globalAlpha = 0.92;
-      ctx.drawImage(atlas, b.rax - swA/2, b.ray - shA/2, swA, shA, -sz * 0.8, -sz * 0.42, sz * 1.6, sz * 0.84);
-      ctx.restore();
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const k = j * cols + i;
+      const t = cellI[k];
+      if (t < 0.04) continue;
+      const e = 1 - Math.pow(1 - Math.min(1, t), 2);
+      const pad = G * 0.06 + (1 - e) * G * 0.2;
+      ctx.globalAlpha = Math.min(1, t * 1.15) * 0.95;
+      ctx.drawImage(atlas, cellAX[k] - swA/2, cellAY[k] - shA/2, swA, shA,
+                    i * G + pad, j * G + pad, G - pad * 2, G - pad * 2);
     }
     ctx.globalAlpha = 1;
 
@@ -427,18 +410,18 @@
     strikes.push({ x: e.clientX - r.left, y: e.clientY - r.top, t: 0 });
   });
 
-  let nextId = 1;
-  function tagIds() { for (const b of birds) if (!b._id) b._id = nextId++; }
-
   function resize() {
     const r = stage.getBoundingClientRect();
     W = Math.max(320, r.width); H = Math.max(320, r.height);
     dpr = Math.min(2, devicePixelRatio || 1);
     canvas.width = W * dpr; canvas.height = H * dpr;
     G = Math.max(11, Math.round(W / 96));
+    cols = Math.ceil(W / G); rows = Math.ceil(H / G);
+    cellI = new Float32Array(cols * rows);
+    cellAX = new Float32Array(cols * rows);
+    cellAY = new Float32Array(cols * rows);
     N = Math.min(1200, Math.round((W * H) / (G * G) / 5.5));
     birds = Array.from({ length: N }, makeBird);
-    tagIds();
     strikes = [];
     setPhase('roam');
     if (reduceMotion) {
