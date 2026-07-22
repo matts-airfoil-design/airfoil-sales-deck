@@ -88,6 +88,10 @@
         <span class="lab">pixel size <output id="oSiz">1.0&times;</output></span>
         <input id="sSiz" type="range" min="0.5" max="2.4" step="0.05" value="1">
       </label>
+      <label class="field">
+        <span class="lab">pixel gap <output id="oGap">6%</output></span>
+        <input id="sGap" type="range" min="0" max="0.42" step="0.01" value="0.06">
+      </label>
       <div class="field" style="margin-bottom:2px">
         <span class="lab">background</span>
         <div class="swrow" id="swrow">
@@ -181,8 +185,9 @@
   let simT = 0;
   let N = 640;
 
-  // user settings: density & size rebuild the grid/flock, speed scales time
-  const SET = { density: 1, speed: 1, size: 1, bg: '#ecece9' };
+  // user settings: density & size rebuild the grid/flock, speed scales time,
+  // gap insets each square within its cell (fraction of the cell per side)
+  const SET = { density: 1, speed: 1, size: 1, gap: 0.06, bg: '#ecece9' };
 
   // ---------- flock cores: wandering centers the cloud gathers around ----------
   const MAXK = 3;
@@ -385,7 +390,7 @@
       const t = cellI[k];
       if (t < 0.04) continue;
       const e = 1 - Math.pow(1 - Math.min(1, t), 2);
-      const pad = G * 0.06 + (1 - e) * G * 0.2;
+      const pad = G * SET.gap + (1 - e) * G * 0.2;
       ctx.globalAlpha = Math.min(1, t * 1.15) * 0.95;
       ctx.drawImage(atlas, cellAX[k] - swA/2, cellAY[k] - shA/2, swA, shA,
                     i * G + pad, j * G + pad, G - pad * 2, G - pad * 2);
@@ -460,6 +465,10 @@
   });
   $('sSpd').addEventListener('input', e => {
     SET.speed = +e.target.value; $('oSpd').textContent = fmt(SET.speed);
+  });
+  $('sGap').addEventListener('input', e => {
+    SET.gap = +e.target.value; $('oGap').textContent = Math.round(SET.gap * 100) + '%';
+    if (reduceMotion) draw(performance.now());
   });
   function setBg(c, sw) {
     SET.bg = c;
