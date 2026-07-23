@@ -336,13 +336,17 @@
   }
 
   let px = -1e4, py = -1e4;
+  let followW = 0;   // eases in while the cursor is on the page
 
   // ---------- update ----------
   function update(now, dt) {
     simT += dt;
 
     // each murmuration's core wanders its own noise path; a click-born
-    // flock starts at the click and eases toward its natural range
+    // flock starts at the click and eases toward its natural range.
+    // while the cursor is on the page, every core leans toward it, so the
+    // flocks loosely follow wherever the cursor goes while still wandering
+    followW += ((px > -1e3 ? 1 : 0) - followW) * (1 - Math.pow(0.5, dt / 450));
     for (const f of flocks) {
       const b0 = noiseCore(f.seed, simT);
       const b1 = noiseCore(f.seed, simT + 800);
@@ -352,6 +356,10 @@
         Math.max(W * 0.08, Math.min(W * 0.92, b0[0] + f.off[0])),
         Math.max(H * 0.1, Math.min(H * 0.9, b0[1] + f.off[1])),
       ];
+      if (followW > 0.01) {
+        f.core[0] += (px - f.core[0]) * 0.6 * followW;
+        f.core[1] += (py - f.core[1]) * 0.6 * followW;
+      }
       f.vel = [(b1[0] - b0[0]) / 0.8, (b1[1] - b0[1]) / 0.8];
     }
 
