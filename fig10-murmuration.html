@@ -140,10 +140,11 @@
   // passes through lights up as a square and fades behind it, so the cloud
   // reads as ever-changing patterns of pixels inside the grid. the squares
   // can wear the multicolor watercolor, or act as a mask over a hidden
-  // image — the flock reveals the picture wherever it flies. every so often
-  // the whole population converges into one dense mass, then bursts apart
-  // into new flocks. the pointer is a falcon: the cloud bulges and parts
-  // around it. click anywhere for a strike — a scattering shockwave.
+  // image — the flock reveals the picture wherever it flies.
+  // the murmurations are living things you conduct: click empty paper and a
+  // new flock is born there; click an existing murmuration and it thins and
+  // dissipates over time. the pointer is a falcon: the cloud bulges and
+  // parts around it.
   const TAU = Math.PI * 2;
   const canvas = document.getElementById('sim');
   const stage = document.getElementById('stage');
@@ -282,55 +283,53 @@
     g.drawImage(maskSrc, (maskC.width - sw * sc) / 2, (maskC.height - sh * sc) / 2, sw * sc, sh * sc);
   }
 
-  // ---------- flock cores: wandering centers the cloud gathers around ----------
-  const MAXK = 3;
-  let activeK = 2;                 // how many flocks are alive right now
-  let phase = 'roam';              // roam | converge
-  let phaseT = 0, phaseDur = 14000;
-  const coreSwirl = [1, -1, 1];    // rotation sense per flock
-
-  function corePos(k, t) {
-    // converge folds every core onto core 0
-    const kk = phase === 'converge' ? 0 : k;
+  // ---------- flocks: living murmurations, born and dispersed by clicks ----------
+  const CAP = 2600;
+  let flocks = [];
+  let nextSeed = 0;
+  function noiseCore(seed, t) {
     return [
-      W * (0.2 + 0.6 * vn(t * 0.000026 + kk * 17.3, kk * 9.1 + 3.7)),
-      H * (0.14 + 0.52 * vn(t * 0.000023 + kk * 7.7, kk * 13.9 + 40)),
+      W * (0.2 + 0.6 * vn(t * 0.000026 + seed * 17.3, seed * 9.1 + 3.7)),
+      H * (0.14 + 0.52 * vn(t * 0.000023 + seed * 7.7, seed * 13.9 + 40)),
     ];
   }
-  function coreVel(k, t) {
-    const [x0, y0] = corePos(k, t - 400);
-    const [x1, y1] = corePos(k, t + 400);
-    return [(x1 - x0) / 0.8, (y1 - y0) / 0.8];   // px/s
+  function makeFlock(x, y) {
+    const seed = (nextSeed += 7.13);
+    const f = {
+      seed, off: [0, 0],
+      swirl: Math.random() < 0.5 ? 1 : -1,
+      dying: false, core: [0, 0], vel: [0, 0],
+    };
+    const base = noiseCore(seed, simT);
+    if (x !== undefined) f.off = [x - base[0], y - base[1]];
+    f.core = [base[0] + f.off[0], base[1] + f.off[1]];
+    flocks.push(f);
+    return f;
   }
-
-  function setPhase(p) {
-    phase = p; phaseT = 0;
-    if (p === 'converge') {
-      phaseDur = rnd(6000, 9500);
-    } else {
-      phaseDur = rnd(12000, 22000);
-      activeK = 1 + (Math.random() * MAXK | 0);          // 1..3 flocks
-      for (let k = 0; k < MAXK; k++) coreSwirl[k] = Math.random() < 0.5 ? 1 : -1;
-      for (const b of birds) {
-        b.flock = Math.random() * activeK | 0;
-        // burst outward so the mass visibly breaks apart into the new flocks
-        const ang = rnd(0, TAU);
-        b.vx += Math.cos(ang) * rnd(40, 140);
-        b.vy += Math.sin(ang) * rnd(40, 140);
-      }
+  // how many birds a murmuration is born with, from the density setting
+  function perFlockN() {
+    return Math.round(Math.max(120, Math.min(CAP, (W * H) / (G * G) / 5.5 * SET.density)) * 0.55);
+  }
+  function dissolveFlock(f) {
+    f.dying = true;
+    for (const b of birds) {
+      if (b.flock !== f) continue;
+      b.dieDelay = rnd(0, 2600);
+      b.dieDur = rnd(600, 1600);
+      b.vx += rnd(-40, 40); b.vy += rnd(-40, 40);
     }
   }
 
   // ---------- birds ----------
-  function makeBird() {
-    const k = Math.random() * activeK | 0;
-    const [cx, cy] = corePos(k, 0);
-    const ang = rnd(0, TAU), r = rnd(0, 160) * SET.flock;
+  function makeBird(f, x, y) {
+    const cx = x !== undefined ? x : f.core[0];
+    const cy = x !== undefined ? y : f.core[1];
+    const ang = rnd(0, TAU), r = rnd(0, x !== undefined ? 60 : 160) * SET.flock;
     const [rax, ray] = CROPS[Math.random() * CROPS.length | 0];
     return {
       x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r,
-      vx: rnd(-80, 80), vy: rnd(-80, 80),
-      flock: k,
+      vx: rnd(-100, 100), vy: rnd(-100, 100),
+      flock: f, fade: 1, dieDelay: 0, dieDur: 0,
       rax, ray,
       seed: rnd(0, 100), ph: rnd(0, TAU),
     };
@@ -339,17 +338,21 @@
   let px = -1e4, py = -1e4;
 
   // ---------- update ----------
-  const cores = [[0,0],[0,0],[0,0]], cvels = [[0,0],[0,0],[0,0]];
   function update(now, dt) {
     simT += dt;
-    phaseT += dt;
-    if (phaseT > phaseDur) setPhase(phase === 'roam' ? 'converge' : 'roam');
 
-    const K = phase === 'converge' ? 1 : activeK;
-    for (let k = 0; k < MAXK; k++) {
-      const kk = Math.min(k, K - 1);
-      cores[k] = corePos(kk, simT);
-      cvels[k] = coreVel(kk, simT);
+    // each murmuration's core wanders its own noise path; a click-born
+    // flock starts at the click and eases toward its natural range
+    for (const f of flocks) {
+      const b0 = noiseCore(f.seed, simT);
+      const b1 = noiseCore(f.seed, simT + 800);
+      const k = Math.pow(0.5, dt / 30000);
+      f.off[0] *= k; f.off[1] *= k;
+      f.core = [
+        Math.max(W * 0.08, Math.min(W * 0.92, b0[0] + f.off[0])),
+        Math.max(H * 0.1, Math.min(H * 0.9, b0[1] + f.off[1])),
+      ];
+      f.vel = [(b1[0] - b0[0]) / 0.8, (b1[1] - b0[1]) / 0.8];
     }
 
     // spatial hash for neighbor queries
@@ -362,7 +365,7 @@
     }
 
     const s = dt / 1000;
-    const maxV = phase === 'converge' ? 185 : 150;
+    const maxV = 160;
     const minV = 55;
     // murmuration size: scales the cloud's equilibrium spread
     const FS = SET.flock;
@@ -370,6 +373,12 @@
 
     for (const b of birds) {
       let ax = 0, ay = 0;
+
+      // a dissipating bird thins out after its own delay
+      if (b.dieDur) {
+        if (b.dieDelay > 0) b.dieDelay -= dt;
+        else b.fade = Math.max(0, b.fade - dt / b.dieDur);
+      }
 
       // --- boids: separation / alignment / cohesion among neighbors ---
       const bi = b.x / CS | 0, bj = b.y / CS | 0;
@@ -398,7 +407,7 @@
       ax += sepx * 34; ay += sepy * 34;                  // separation
 
       // --- gathering around the wandering core, stretched along its travel ---
-      const co = cores[b.flock], cv = cvels[b.flock];
+      const co = b.flock.core, cv = b.flock.vel;
       let gx = co[0] - b.x, gy = co[1] - b.y;
       const cs2 = Math.hypot(cv[0], cv[1]);
       if (cs2 > 1) {
@@ -407,12 +416,12 @@
         gx -= ux * par * 0.55; gy -= uy * par * 0.55;    // weaker → cloud elongates
       }
       const gd = Math.hypot(gx, gy) || 1;
-      const tight = phase === 'converge' ? 1.9 : 1.15;
-      const soft = (phase === 'converge' ? 95 : 45) * FS * FS;
-      const pull = Math.min(220, Math.max(0, gd - soft) * tight);
+      const soft = 45 * FS * FS;
+      // a dissipating flock loosens its grip as it fades
+      const pull = Math.min(220, Math.max(0, gd - soft) * 1.15) * b.fade;
       ax += gx / gd * pull; ay += gy / gd * pull;
       // tangential swirl — the folding, rolling motion of the mass
-      const sw = coreSwirl[b.flock] * (phase === 'converge' ? 46 : 30);
+      const sw = b.flock.swirl * 30 * b.fade;
       ax += -gy / gd * sw; ay += gx / gd * sw;
 
       // --- turbulence ---
@@ -428,18 +437,7 @@
         ax += fdx / fd * f; ay += fdy / fd * f;
       }
 
-      // --- strikes: expanding shockwaves ---
-      for (const st of strikes) {
-        const r = st.t * 340;
-        const dx = b.x - st.x, dy = b.y - st.y;
-        const d = Math.hypot(dx, dy) || 1;
-        if (Math.abs(d - r) < 60) {
-          const f = (1 - Math.abs(d - r) / 60) * 1400 * (1 - st.t);
-          ax += dx / d * f; ay += dy / d * f;
-        }
-      }
-
-      // --- soft screen bounds & lede avoidance ---
+      // --- soft screen bounds ---
       const m = 70;
       if (b.x < m) ax += (m - b.x) * 6;
       if (b.x > W - m) ax -= (b.x - (W - m)) * 6;
@@ -460,6 +458,12 @@
     for (const st of strikes) st.t += dt / 900;
     strikes = strikes.filter(st => st.t < 1);
 
+    // dissipated birds are gone; empty dying flocks disappear with them
+    if (birds.some(b => b.fade <= 0.02)) {
+      birds = birds.filter(b => b.fade > 0.02);
+      flocks = flocks.filter(f => !f.dying || birds.some(b => b.flock === f));
+    }
+
     // deposit the flock into the grid: cells light where birds are and
     // fade shortly after they leave, leaving a quantized wake
     const fade = Math.pow(0.5, dt / 150);
@@ -469,7 +473,7 @@
       if (i < 0 || i >= cols || j < 0 || j >= rows) continue;
       const k = j * cols + i;
       if (cellI[k] < 0.06) { cellAX[k] = b.rax; cellAY[k] = b.ray; }
-      cellI[k] = Math.min(1, cellI[k] + dt / 110);
+      cellI[k] = Math.min(1, cellI[k] + dt / 110 * b.fade);
     }
   }
 
@@ -522,7 +526,22 @@
   canvas.addEventListener('pointerleave', () => { px = -1e4; py = -1e4; });
   canvas.addEventListener('pointerdown', e => {
     const r = canvas.getBoundingClientRect();
-    strikes.push({ x: e.clientX - r.left, y: e.clientY - r.top, t: 0 });
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    strikes.push({ x, y, t: 0 });
+    // click a murmuration → it dissipates; click empty paper → one is born
+    let hit = null, hd = 70 * 70;
+    for (const b of birds) {
+      if (b.flock.dying) continue;
+      const d = (b.x - x) ** 2 + (b.y - y) ** 2;
+      if (d < hd) { hd = d; hit = b.flock; }
+    }
+    if (hit) dissolveFlock(hit);
+    else {
+      const f = makeFlock(x, y);
+      const n = Math.min(CAP - birds.length, perFlockN());
+      for (let k = 0; k < n; k++) birds.push(makeBird(f, x, y));
+    }
+    if (reduceMotion) { for (let i = 0; i < 120; i++) update(i * 16, 16); draw(performance.now()); }
   });
 
   // rebuild the grid and flock for the current settings, keeping the sim going
@@ -533,9 +552,23 @@
     cellAX = new Float32Array(cols * rows);
     cellAY = new Float32Array(cols * rows);
     buildMask();
-    N = Math.max(120, Math.min(2600, Math.round((W * H) / (G * G) / 5.5 * SET.density)));
-    while (birds.length < N) birds.push(makeBird());
-    if (birds.length > N) birds.length = N;
+    // top up living flocks toward the density target; trim the overflow
+    if (!flocks.length) { makeFlock(); makeFlock(); }
+    const alive = flocks.filter(f => !f.dying);
+    const targetTotal = Math.min(CAP, perFlockN() * Math.max(1, alive.length));
+    let live = 0;
+    for (const b of birds) if (!b.flock.dying) live++;
+    let gi = 0;
+    while (live < targetTotal && alive.length) {
+      birds.push(makeBird(alive[gi++ % alive.length]));
+      live++;
+    }
+    while (live > targetTotal) {
+      const i = birds.findIndex(b => !b.flock.dying);
+      if (i < 0) break;
+      birds.splice(i, 1);
+      live--;
+    }
     if (reduceMotion) {
       // settle the flock into a believable still, then draw once
       for (let i = 0; i < 240; i++) update(i * 16, 16);
@@ -548,8 +581,7 @@
     W = Math.max(320, r.width); H = Math.max(320, r.height);
     dpr = Math.min(2, devicePixelRatio || 1);
     canvas.width = W * dpr; canvas.height = H * dpr;
-    birds = []; strikes = [];
-    setPhase('roam');
+    birds = []; strikes = []; flocks = [];
     rebuild();
   }
 
