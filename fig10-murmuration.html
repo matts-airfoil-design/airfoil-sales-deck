@@ -51,6 +51,16 @@
     accent-color: #3e7bd6;
   }
   .panel input[type="range"]:focus-visible { outline: 2px solid #3e7bd6; outline-offset: 2px; }
+  .panel .segrow { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+  .panel .seg {
+    padding: 4px 9px;
+    font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: #55524b;
+    border: 1px solid rgba(120,117,108,0.5);
+    border-radius: 4px; background: none; cursor: pointer;
+  }
+  .panel .seg.on { background: #3e7bd6; border-color: #3e7bd6; color: #fff; }
+  .panel .seg:focus-visible { outline: 2px solid #3e7bd6; outline-offset: 1px; }
   .panel .swrow { display: flex; align-items: center; gap: 7px; margin-top: 7px; }
   .panel .sw {
     width: 23px; height: 23px; padding: 0;
@@ -92,6 +102,15 @@
         <span class="lab">pixel gap <output id="oGap">6%</output></span>
         <input id="sGap" type="range" min="0" max="0.42" step="0.01" value="0.06">
       </label>
+      <div class="field">
+        <span class="lab">pixels</span>
+        <div class="segrow">
+          <button class="seg" id="mWater">watercolor</button>
+          <button class="seg on" id="mImage">image</button>
+          <button class="seg" id="mUpload">upload&hellip;</button>
+          <input id="fImg" type="file" accept="image/*" hidden>
+        </div>
+      </div>
       <div class="field" style="margin-bottom:2px">
         <span class="lab">background</span>
         <div class="swrow" id="swrow">
@@ -114,11 +133,13 @@
   // alignment, cohesion and separation, gathered around wandering cores that
   // drift like a starling cloud — stretching, folding, splitting into lobes
   // and re-merging. the birds themselves are invisible; each grid cell a bird
-  // passes through lights up as a watercolor square and fades behind it, so
-  // the cloud reads as ever-changing patterns of pixels inside the grid.
-  // every so often the whole population converges into one dense mass, then
-  // bursts apart into new flocks. the pointer is a falcon: the cloud bulges
-  // and parts around it. click anywhere for a strike — a scattering shockwave.
+  // passes through lights up as a square and fades behind it, so the cloud
+  // reads as ever-changing patterns of pixels inside the grid. the squares
+  // can wear the multicolor watercolor, or act as a mask over a hidden
+  // image — the flock reveals the picture wherever it flies. every so often
+  // the whole population converges into one dense mass, then bursts apart
+  // into new flocks. the pointer is a falcon: the cloud bulges and parts
+  // around it. click anywhere for a strike — a scattering shockwave.
   const TAU = Math.PI * 2;
   const canvas = document.getElementById('sim');
   const stage = document.getElementById('stage');
@@ -186,8 +207,75 @@
   let N = 640;
 
   // user settings: density & size rebuild the grid/flock, speed scales time,
-  // gap insets each square within its cell (fraction of the cell per side)
-  const SET = { density: 1, speed: 1, size: 1, gap: 0.06, bg: '#ecece9' };
+  // gap insets each square within its cell (fraction of the cell per side),
+  // mode picks what the pixels wear: watercolor, or a hidden image mask
+  const SET = { density: 1, speed: 1, size: 1, gap: 0.06, mode: 'image', bg: '#ecece9' };
+
+  // ---------- the hidden image ----------
+  // default mask: a procedural take on the radial tree-ring watercolor —
+  // magenta and indigo wedges, coral heart, navy pool, peach rim. the
+  // upload button swaps in any image file at runtime.
+  function makeDefaultMask() {
+    const mw = 760, mh = 520;
+    const c = document.createElement('canvas');
+    c.width = mw; c.height = mh;
+    const g = c.getContext('2d');
+    const img = g.createImageData(mw, mh);
+    const d = img.data;
+    const AN = [
+      [-180, 138, 92, 216], [-125, 232, 50, 200], [-95, 255, 60, 190],
+      [-60, 90, 85, 215], [-25, 120, 110, 225], [10, 143, 143, 224],
+      [50, 240, 144, 122], [95, 245, 180, 154], [140, 154, 122, 224],
+      [180, 138, 92, 216],
+    ];
+    const mix = (a, b, t) => a + (b - a) * t;
+    for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
+      const nx = (x - mw / 2) / (mw * 0.42), ny = (y - mh / 2) / (mh * 0.46);
+      const ang = Math.atan2(ny, nx), deg = ang * 180 / Math.PI;
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const r = Math.hypot(nx, ny) * (1 + (vn(ca * 2.2 + 9.3, sa * 2.2 + 4.1) - 0.5) * 0.3);
+      let k = 1;
+      while (AN[k][0] < deg) k++;
+      const t0 = (deg - AN[k - 1][0]) / (AN[k][0] - AN[k - 1][0]);
+      let cr = mix(AN[k - 1][1], AN[k][1], t0);
+      let cg = mix(AN[k - 1][2], AN[k][2], t0);
+      let cb = mix(AN[k - 1][3], AN[k][3], t0);
+      // coral heart
+      const hw = Math.max(0, 1 - r / 0.34);
+      const hb = Math.pow(hw, 1.2) * 0.95;
+      cr = mix(cr, 239, hb); cg = mix(cg, 95, hb); cb = mix(cb, 72, hb);
+      // navy pool east of center
+      const dd = (deg - 25) / 38, rr = (r - 0.42) / 0.17;
+      const nb = Math.exp(-(dd * dd + rr * rr)) * 0.85;
+      cr = mix(cr, 30, nb); cg = mix(cg, 63, nb); cb = mix(cb, 143, nb);
+      // growth rings + radial streaks
+      const ring = 0.84 + 0.24 * Math.sin(r * 70 + (vn(deg * 0.05 + 3.7, r * 8.2) - 0.5) * 5);
+      const st = 0.82 + 0.36 * vn(deg * 0.65 + 41.2, r * 3.1 + 7.7);
+      const light = ring * st + (Math.random() - 0.5) * 0.06;
+      cr *= light; cg *= light; cb *= light;
+      // irregular blob edge fading to paper
+      const edge = 0.88 + (vn(ca * 3.1 + 20.4, sa * 3.1 + 11.8) - 0.5) * 0.24;
+      const f = Math.max(0, Math.min(1, (edge - r) / 0.09));
+      const ff = f * f * (3 - 2 * f);
+      cr = mix(238, cr, ff); cg = mix(238, cg, ff); cb = mix(236, cb, ff);
+      const i4 = (y * mw + x) * 4;
+      d[i4] = cr; d[i4 + 1] = cg; d[i4 + 2] = cb; d[i4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  let maskSrc = makeDefaultMask();
+  let maskC = null;
+  function buildMask() {
+    // cover-fit the source image to the viewport; lit cells sample it 1:1
+    maskC = document.createElement('canvas');
+    maskC.width = Math.max(2, W * dpr | 0);
+    maskC.height = Math.max(2, H * dpr | 0);
+    const g = maskC.getContext('2d');
+    const sw = maskSrc.width, sh = maskSrc.height;
+    const sc = Math.max(maskC.width / sw, maskC.height / sh);
+    g.drawImage(maskSrc, (maskC.width - sw * sc) / 2, (maskC.height - sh * sc) / 2, sw * sc, sh * sc);
+  }
 
   // ---------- flock cores: wandering centers the cloud gathers around ----------
   const MAXK = 3;
@@ -392,8 +480,15 @@
       const e = 1 - Math.pow(1 - Math.min(1, t), 2);
       const pad = G * SET.gap + (1 - e) * G * 0.2;
       ctx.globalAlpha = Math.min(1, t * 1.15) * 0.95;
-      ctx.drawImage(atlas, cellAX[k] - swA/2, cellAY[k] - shA/2, swA, shA,
-                    i * G + pad, j * G + pad, G - pad * 2, G - pad * 2);
+      if (SET.mode === 'image') {
+        // the pixel is a window: it shows the hidden image at its own spot
+        ctx.drawImage(maskC, (i * G + pad) * dpr, (j * G + pad) * dpr,
+                      (G - pad * 2) * dpr, (G - pad * 2) * dpr,
+                      i * G + pad, j * G + pad, G - pad * 2, G - pad * 2);
+      } else {
+        ctx.drawImage(atlas, cellAX[k] - swA/2, cellAY[k] - shA/2, swA, shA,
+                      i * G + pad, j * G + pad, G - pad * 2, G - pad * 2);
+      }
     }
     ctx.globalAlpha = 1;
 
@@ -429,6 +524,7 @@
     cellI = new Float32Array(cols * rows);
     cellAX = new Float32Array(cols * rows);
     cellAY = new Float32Array(cols * rows);
+    buildMask();
     N = Math.max(120, Math.min(2600, Math.round((W * H) / (G * G) / 5.5 * SET.density)));
     while (birds.length < N) birds.push(makeBird());
     if (birds.length > N) birds.length = N;
@@ -469,6 +565,26 @@
   $('sGap').addEventListener('input', e => {
     SET.gap = +e.target.value; $('oGap').textContent = Math.round(SET.gap * 100) + '%';
     if (reduceMotion) draw(performance.now());
+  });
+  function setMode(m) {
+    SET.mode = m;
+    $('mWater').classList.toggle('on', m === 'watercolor');
+    $('mImage').classList.toggle('on', m === 'image');
+    if (reduceMotion) draw(performance.now());
+  }
+  $('mWater').addEventListener('click', () => setMode('watercolor'));
+  $('mImage').addEventListener('click', () => setMode('image'));
+  $('mUpload').addEventListener('click', () => $('fImg').click());
+  $('fImg').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      const im = new Image();
+      im.onload = () => { maskSrc = im; buildMask(); setMode('image'); };
+      im.src = rd.result;
+    };
+    rd.readAsDataURL(f);
   });
   function setBg(c, sw) {
     SET.bg = c;
